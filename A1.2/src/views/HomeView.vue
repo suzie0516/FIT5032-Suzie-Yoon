@@ -31,7 +31,7 @@ const locations = [
   },
   {
     name: 'Brimbank',
-    coordinates: [-37.7420, 144.8000]
+    coordinates: [-37.6690, 144.8430]
   },
   {
     name: 'Hume',
@@ -279,7 +279,7 @@ const useMyLocation = () => {
           attribution="&copy; OpenStreetMap contributors"
         />
 
-        <!-- Priority area marker -->
+        <!-- Priority area: Brimbank -->
         <LMarker
           v-if="priorityAreas"
           :lat-lng="[-37.6690, 144.8430]"
@@ -305,7 +305,7 @@ const useMyLocation = () => {
           </LPopup>
         </LMarker>
 
-        <!-- Active project marker -->
+        <!-- Active project -->
         <LMarker
           v-if="activeProjects"
           :lat-lng="[-37.7080, 144.9500]"
@@ -331,7 +331,7 @@ const useMyLocation = () => {
           </LPopup>
         </LMarker>
 
-        <!-- Planted site marker -->
+        <!-- Planted site -->
         <LMarker
           v-if="plantedSites"
           :lat-lng="[-37.8136, 144.9631]"
@@ -357,7 +357,7 @@ const useMyLocation = () => {
           </LPopup>
         </LMarker>
 
-        <!-- Plant supplier marker -->
+        <!-- Plant supplier -->
         <LMarker
           v-if="plantSuppliers"
           :lat-lng="[-37.8768, 145.0458]"
@@ -383,7 +383,7 @@ const useMyLocation = () => {
           </LPopup>
         </LMarker>
 
-        <!-- Donation point marker -->
+        <!-- Donation point -->
         <LMarker
           v-if="donationPoints"
           :lat-lng="[-37.8409, 144.9465]"
