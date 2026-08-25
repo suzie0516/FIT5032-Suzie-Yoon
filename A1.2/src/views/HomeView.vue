@@ -15,6 +15,9 @@ import 'leaflet/dist/leaflet.css'
 const searchQuery = ref('')
 const searchMessage = ref('')
 
+// Leaflet map reference
+const mapRef = ref(null)
+
 // Map settings
 const zoom = ref(11)
 const mapCenter = ref([-37.8136, 144.9631])
@@ -50,6 +53,16 @@ const plantedSites = ref(true)
 const plantSuppliers = ref(false)
 const donationPoints = ref(false)
 
+// Move Leaflet map to a location
+const moveMap = (coordinates, newZoom = 13) => {
+  mapCenter.value = coordinates
+  zoom.value = newZoom
+
+  if (mapRef.value?.leafletObject) {
+    mapRef.value.leafletObject.setView(coordinates, newZoom)
+  }
+}
+
 // Search for a Melbourne location
 const searchLocation = () => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -65,8 +78,7 @@ const searchLocation = () => {
   )
 
   if (location) {
-    mapCenter.value = location.coordinates
-    zoom.value = 13
+    moveMap(location.coordinates, 13)
 
     searchMessage.value =
       `Showing results for: ${location.name}`
@@ -76,7 +88,7 @@ const searchLocation = () => {
   }
 }
 
-// Move the map to the user's current location
+// Move map to user's current location
 const useMyLocation = () => {
   if (!navigator.geolocation) {
     searchMessage.value =
@@ -88,11 +100,12 @@ const useMyLocation = () => {
 
   navigator.geolocation.getCurrentPosition(
     (position) => {
-      const latitude = position.coords.latitude
-      const longitude = position.coords.longitude
+      const coordinates = [
+        position.coords.latitude,
+        position.coords.longitude
+      ]
 
-      mapCenter.value = [latitude, longitude]
-      zoom.value = 15
+      moveMap(coordinates, 15)
 
       searchMessage.value =
         'Your current location is shown on the map.'
@@ -125,7 +138,6 @@ const useMyLocation = () => {
     <section class="mb-4">
       <div class="row g-2">
 
-        <!-- Search input -->
         <div class="col-12 col-md-7">
           <input
             v-model="searchQuery"
@@ -136,7 +148,6 @@ const useMyLocation = () => {
           />
         </div>
 
-        <!-- Search button -->
         <div class="col-6 col-md-auto">
           <button
             class="btn btn-dark w-100"
@@ -146,7 +157,6 @@ const useMyLocation = () => {
           </button>
         </div>
 
-        <!-- My Location button -->
         <div class="col-6 col-md-auto">
           <button
             class="btn btn-outline-dark w-100"
@@ -158,7 +168,6 @@ const useMyLocation = () => {
 
       </div>
 
-      <!-- Search / location message -->
       <p
         v-if="searchMessage"
         class="mt-2 mb-0"
@@ -175,7 +184,6 @@ const useMyLocation = () => {
 
       <div class="d-flex flex-wrap gap-3">
 
-        <!-- Priority areas -->
         <div class="form-check">
           <input
             v-model="priorityAreas"
@@ -183,16 +191,11 @@ const useMyLocation = () => {
             type="checkbox"
             id="priorityAreas"
           />
-
-          <label
-            class="form-check-label"
-            for="priorityAreas"
-          >
+          <label class="form-check-label" for="priorityAreas">
             Priority areas
           </label>
         </div>
 
-        <!-- Active projects -->
         <div class="form-check">
           <input
             v-model="activeProjects"
@@ -200,16 +203,11 @@ const useMyLocation = () => {
             type="checkbox"
             id="activeProjects"
           />
-
-          <label
-            class="form-check-label"
-            for="activeProjects"
-          >
+          <label class="form-check-label" for="activeProjects">
             Active projects
           </label>
         </div>
 
-        <!-- Planted sites -->
         <div class="form-check">
           <input
             v-model="plantedSites"
@@ -217,16 +215,11 @@ const useMyLocation = () => {
             type="checkbox"
             id="plantedSites"
           />
-
-          <label
-            class="form-check-label"
-            for="plantedSites"
-          >
+          <label class="form-check-label" for="plantedSites">
             Planted sites
           </label>
         </div>
 
-        <!-- Plant suppliers -->
         <div class="form-check">
           <input
             v-model="plantSuppliers"
@@ -234,16 +227,11 @@ const useMyLocation = () => {
             type="checkbox"
             id="plantSuppliers"
           />
-
-          <label
-            class="form-check-label"
-            for="plantSuppliers"
-          >
+          <label class="form-check-label" for="plantSuppliers">
             Plant suppliers
           </label>
         </div>
 
-        <!-- Donation points -->
         <div class="form-check">
           <input
             v-model="donationPoints"
@@ -251,11 +239,7 @@ const useMyLocation = () => {
             type="checkbox"
             id="donationPoints"
           />
-
-          <label
-            class="form-check-label"
-            for="donationPoints"
-          >
+          <label class="form-check-label" for="donationPoints">
             Donation points
           </label>
         </div>
@@ -267,19 +251,19 @@ const useMyLocation = () => {
     <section class="map-container">
 
       <LMap
+        ref="mapRef"
         v-model:zoom="zoom"
         :center="mapCenter"
         :use-global-leaflet="false"
         style="height: 450px; width: 100%"
       >
 
-        <!-- OpenStreetMap -->
         <LTileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution="&copy; OpenStreetMap contributors"
         />
 
-        <!-- Priority area: Brimbank -->
+        <!-- Brimbank Priority Area -->
         <LMarker
           v-if="priorityAreas"
           :lat-lng="[-37.6690, 144.8430]"
@@ -305,7 +289,7 @@ const useMyLocation = () => {
           </LPopup>
         </LMarker>
 
-        <!-- Active project -->
+        <!-- Active Project -->
         <LMarker
           v-if="activeProjects"
           :lat-lng="[-37.7080, 144.9500]"
@@ -331,7 +315,7 @@ const useMyLocation = () => {
           </LPopup>
         </LMarker>
 
-        <!-- Planted site -->
+        <!-- Melbourne Planted Site -->
         <LMarker
           v-if="plantedSites"
           :lat-lng="[-37.8136, 144.9631]"
@@ -357,7 +341,7 @@ const useMyLocation = () => {
           </LPopup>
         </LMarker>
 
-        <!-- Plant supplier -->
+        <!-- Plant Supplier -->
         <LMarker
           v-if="plantSuppliers"
           :lat-lng="[-37.8768, 145.0458]"
@@ -383,7 +367,7 @@ const useMyLocation = () => {
           </LPopup>
         </LMarker>
 
-        <!-- Donation point -->
+        <!-- Donation Point -->
         <LMarker
           v-if="donationPoints"
           :lat-lng="[-37.8409, 144.9465]"
