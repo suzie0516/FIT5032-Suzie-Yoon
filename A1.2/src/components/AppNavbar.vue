@@ -10,6 +10,7 @@
         POTS & PLANTS MELBOURNE
       </RouterLink>
 
+      <!-- Mobile Menu Button -->
       <button
         class="navbar-toggler"
         type="button"
@@ -28,7 +29,7 @@
       >
         <ul class="navbar-nav ms-auto align-items-lg-center">
 
-          <!-- Home / Green Map -->
+          <!-- Green Map -->
           <li class="nav-item">
             <RouterLink
               class="nav-link"
@@ -38,14 +39,17 @@
             </RouterLink>
           </li>
 
-          <!-- Not implemented in A1.2 -->
+          <!-- Volunteer Form -->
           <li class="nav-item">
-            <span class="nav-link">
+            <RouterLink
+              class="nav-link"
+              to="/volunteer"
+            >
               Our Programs
-            </span>
+            </RouterLink>
           </li>
 
-          <!-- Plants Table -->
+          <!-- Plant Finder -->
           <li class="nav-item">
             <RouterLink
               class="nav-link"
@@ -55,7 +59,7 @@
             </RouterLink>
           </li>
 
-          <!-- Not implemented in A1.2 -->
+          <!-- Future Pages -->
           <li class="nav-item">
             <span class="nav-link">
               Events
@@ -86,6 +90,7 @@
             </span>
           </li>
 
+          <!-- Sign In -->
           <li class="nav-item ms-lg-2">
             <button
               class="btn btn-dark btn-sm"
@@ -101,9 +106,11 @@
   </nav>
 </template>
 
+
 <script setup>
 import { RouterLink } from 'vue-router'
 </script>
+
 
 <style scoped>
 .router-link-active.nav-link {
