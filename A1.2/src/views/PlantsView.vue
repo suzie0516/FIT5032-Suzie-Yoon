@@ -2,8 +2,10 @@
 import { ref, computed, watch } from 'vue'
 import AppNavbar from '../components/AppNavbar.vue'
 
+const savedPlants = localStorage.getItem('plants')
 // Plant data
-const plants = ref([
+
+const defaultPlants = [
   {
     name: 'River Red Gum',
     type: 'Tree',
@@ -124,7 +126,29 @@ const plants = ref([
     biodiversity: 'High',
     season: 'Spring'
   }
-])
+]
+
+const plants = ref(
+  savedPlants ? JSON.parse(savedPlants) : defaultPlants
+)
+
+if (!savedPlants) {
+  localStorage.setItem(
+    'plants',
+    JSON.stringify(plants.value)
+  )
+}
+
+watch(
+  plants,
+  (newPlants) => {
+    localStorage.setItem(
+      'plants',
+      JSON.stringify(newPlants)
+    )
+  },
+  { deep: true }
+)
 
 // Global search
 const globalSearch = ref('')
