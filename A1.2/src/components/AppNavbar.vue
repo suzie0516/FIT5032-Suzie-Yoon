@@ -1,12 +1,18 @@
 <template>
   <nav class="navbar navbar-expand-lg bg-white border-bottom">
     <div class="container">
-      <RouterLink class="navbar-brand fw-bold" to="/">
+
+      <!-- Brand -->
+      <RouterLink
+        class="navbar-brand fw-bold order-2 order-lg-1"
+        to="/"
+      >
         POTS & PLANTS MELBOURNE
       </RouterLink>
 
+      <!-- Mobile hamburger -->
       <button
-        class="navbar-toggler"
+        class="navbar-toggler order-1 order-lg-2"
         type="button"
         data-bs-toggle="collapse"
         data-bs-target="#mainNavbar"
@@ -17,8 +23,12 @@
         <span class="navbar-toggler-icon"></span>
       </button>
 
-      <div class="collapse navbar-collapse" id="mainNavbar">
-        <ul class="navbar-nav ms-auto align-items-lg-center">
+      <!-- Navigation -->
+      <div
+        class="collapse navbar-collapse order-3"
+        id="mainNavbar"
+      >
+        <ul class="navbar-nav ms-lg-auto align-items-lg-center">
 
           <!-- Explore -> Find Plants -->
           <li class="nav-item dropdown">
@@ -33,9 +43,15 @@
               Explore
             </a>
 
-            <ul class="dropdown-menu" aria-labelledby="exploreDropdown">
+            <ul
+              class="dropdown-menu"
+              aria-labelledby="exploreDropdown"
+            >
               <li>
-                <RouterLink class="dropdown-item" to="/plants">
+                <RouterLink
+                  class="dropdown-item"
+                  to="/plants"
+                >
                   Find Plants
                 </RouterLink>
               </li>
@@ -43,15 +59,21 @@
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">Our Programs</span>
+            <span class="nav-link">
+              Our Programs
+            </span>
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">Resources</span>
+            <span class="nav-link">
+              Resources
+            </span>
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">Events</span>
+            <span class="nav-link">
+              Events
+            </span>
           </li>
 
           <!-- About Us -> Volunteering -->
@@ -67,9 +89,15 @@
               About Us
             </a>
 
-            <ul class="dropdown-menu" aria-labelledby="aboutDropdown">
+            <ul
+              class="dropdown-menu"
+              aria-labelledby="aboutDropdown"
+            >
               <li>
-                <RouterLink class="dropdown-item" to="/volunteer">
+                <RouterLink
+                  class="dropdown-item"
+                  to="/volunteer"
+                >
                   Volunteering
                 </RouterLink>
               </li>
@@ -77,25 +105,35 @@
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">Shop</span>
+            <span class="nav-link">
+              Shop
+            </span>
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">Donate</span>
+            <span class="nav-link">
+              Donate
+            </span>
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">Account</span>
+            <span class="nav-link">
+              Account
+            </span>
           </li>
 
           <li class="nav-item ms-lg-2">
-            <button class="btn btn-dark btn-sm" type="button">
+            <button
+              class="btn btn-dark btn-sm"
+              type="button"
+            >
               Sign In
             </button>
           </li>
 
         </ul>
       </div>
+
     </div>
   </nav>
 </template>
