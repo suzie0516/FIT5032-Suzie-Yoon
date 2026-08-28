@@ -1,16 +1,10 @@
 <template>
   <nav class="navbar navbar-expand-lg bg-white border-bottom">
     <div class="container">
-
-      <!-- Logo / Home -->
-      <RouterLink
-        class="navbar-brand fw-bold"
-        to="/"
-      >
+      <RouterLink class="navbar-brand fw-bold" to="/">
         POTS & PLANTS MELBOURNE
       </RouterLink>
 
-      <!-- Mobile Menu Button -->
       <button
         class="navbar-toggler"
         type="button"
@@ -23,79 +17,79 @@
         <span class="navbar-toggler-icon"></span>
       </button>
 
-      <div
-        class="collapse navbar-collapse"
-        id="mainNavbar"
-      >
+      <div class="collapse navbar-collapse" id="mainNavbar">
         <ul class="navbar-nav ms-auto align-items-lg-center">
 
-          <!-- Green Map -->
-          <li class="nav-item">
-            <RouterLink
-              class="nav-link"
-              to="/"
+          <!-- Explore -> Find Plants -->
+          <li class="nav-item dropdown">
+            <a
+              class="nav-link dropdown-toggle"
+              href="#"
+              id="exploreDropdown"
+              role="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
             >
               Explore
-            </RouterLink>
+            </a>
+
+            <ul class="dropdown-menu" aria-labelledby="exploreDropdown">
+              <li>
+                <RouterLink class="dropdown-item" to="/plants">
+                  Find Plants
+                </RouterLink>
+              </li>
+            </ul>
           </li>
 
-          <!-- Volunteer Form -->
           <li class="nav-item">
-            <RouterLink
-              class="nav-link"
-              to="/volunteer"
+            <span class="nav-link">Our Programs</span>
+          </li>
+
+          <li class="nav-item">
+            <span class="nav-link">Resources</span>
+          </li>
+
+          <li class="nav-item">
+            <span class="nav-link">Events</span>
+          </li>
+
+          <!-- About Us -> Volunteering -->
+          <li class="nav-item dropdown">
+            <a
+              class="nav-link dropdown-toggle"
+              href="#"
+              id="aboutDropdown"
+              role="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
             >
-              Our Programs
-            </RouterLink>
-          </li>
-
-          <!-- Plant Finder -->
-          <li class="nav-item">
-            <RouterLink
-              class="nav-link"
-              to="/plants"
-            >
-              Resources
-            </RouterLink>
-          </li>
-
-          <!-- Future Pages -->
-          <li class="nav-item">
-            <span class="nav-link">
-              Events
-            </span>
-          </li>
-
-          <li class="nav-item">
-            <span class="nav-link">
               About Us
-            </span>
+            </a>
+
+            <ul class="dropdown-menu" aria-labelledby="aboutDropdown">
+              <li>
+                <RouterLink class="dropdown-item" to="/volunteer">
+                  Volunteering
+                </RouterLink>
+              </li>
+            </ul>
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">
-              Shop
-            </span>
+            <span class="nav-link">Shop</span>
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">
-              Donate
-            </span>
+            <span class="nav-link">Donate</span>
           </li>
 
           <li class="nav-item">
-            <span class="nav-link">
-              Account
-            </span>
+            <span class="nav-link">Account</span>
           </li>
 
-          <!-- Sign In -->
           <li class="nav-item ms-lg-2">
-            <button
-              class="btn btn-dark btn-sm"
-              type="button"
-            >
+            <button class="btn btn-dark btn-sm" type="button">
               Sign In
             </button>
           </li>
@@ -106,19 +100,16 @@
   </nav>
 </template>
 
-
 <script setup>
 import { RouterLink } from 'vue-router'
 </script>
 
-
 <style scoped>
-.router-link-active.nav-link {
+.router-link-active.dropdown-item {
   font-weight: 600;
-  text-decoration: underline;
 }
 
 .nav-link {
-  cursor: default;
+  cursor: pointer;
 }
 </style>
