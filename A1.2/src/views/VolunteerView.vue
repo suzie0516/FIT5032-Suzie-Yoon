@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import AppNavbar from '../components/AppNavbar.vue'
 
 const name = ref('')
@@ -13,6 +13,36 @@ const suburbError = ref('')
 const interestError = ref('')
 
 const successMessage = ref('')
+
+// Has the email field already been validated?
+const emailTouched = ref(false)
+
+// Email validation
+const validateEmail = () => {
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+  if (email.value.trim() === '') {
+    emailError.value = 'Email is required.'
+  } else if (!emailPattern.test(email.value.trim())) {
+    emailError.value = 'Please enter a valid email address.'
+  } else {
+    emailError.value = ''
+  }
+}
+
+// Start email validation when the user leaves the field
+const handleEmailBlur = () => {
+  emailTouched.value = true
+  validateEmail()
+}
+
+// After validation has started,
+// continuously validate whenever the email changes
+watch(email, () => {
+  if (emailTouched.value) {
+    validateEmail()
+  }
+})
 
 const validateForm = () => {
   // Clear old messages
@@ -30,36 +60,28 @@ const validateForm = () => {
     nameError.value = 'Name is required.'
     isValid = false
   } else if (name.value.trim().length < 3) {
-    nameError.value =
-      'Name must contain at least 3 characters.'
+    nameError.value = 'Name must contain at least 3 characters.'
     isValid = false
   }
 
   // Validation 2:
   // Email format validation
-  const emailPattern =
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  emailTouched.value = true
+  validateEmail()
 
-  if (email.value.trim() === '') {
-    emailError.value = 'Email is required.'
-    isValid = false
-  } else if (!emailPattern.test(email.value)) {
-    emailError.value =
-      'Please enter a valid email address.'
+  if (emailError.value) {
     isValid = false
   }
 
   // Required suburb
   if (suburb.value === '') {
-    suburbError.value =
-      'Please select your suburb.'
+    suburbError.value = 'Please select your suburb.'
     isValid = false
   }
 
   // Required interest
   if (interest.value === '') {
-    interestError.value =
-      'Please select an area of interest.'
+    interestError.value = 'Please select an area of interest.'
     isValid = false
   }
 
@@ -72,6 +94,10 @@ const validateForm = () => {
     email.value = ''
     suburb.value = ''
     interest.value = ''
+
+    // Reset validation state for the next submission
+    emailTouched.value = false
+    emailError.value = ''
   }
 }
 </script>
@@ -80,7 +106,6 @@ const validateForm = () => {
   <AppNavbar />
 
   <main class="container py-5">
-
     <section class="mb-4">
       <h1 class="fw-bold">
         VOLUNTEER WITH US
@@ -93,18 +118,14 @@ const validateForm = () => {
     </section>
 
     <section class="row">
-
       <div class="col-12 col-md-8 col-lg-6">
-
         <form
           class="border rounded p-4"
           novalidate
           @submit.prevent="validateForm"
         >
-
           <!-- Name -->
           <div class="mb-3">
-
             <label
               for="volunteerName"
               class="form-label fw-bold"
@@ -127,13 +148,10 @@ const validateForm = () => {
             >
               {{ nameError }}
             </div>
-
           </div>
-
 
           <!-- Email -->
           <div class="mb-3">
-
             <label
               for="volunteerEmail"
               class="form-label fw-bold"
@@ -148,6 +166,7 @@ const validateForm = () => {
               class="form-control"
               :class="{ 'is-invalid': emailError }"
               placeholder="example@email.com"
+              @blur="handleEmailBlur"
             />
 
             <div
@@ -156,13 +175,10 @@ const validateForm = () => {
             >
               {{ emailError }}
             </div>
-
           </div>
-
 
           <!-- Suburb -->
           <div class="mb-3">
-
             <label
               for="volunteerSuburb"
               class="form-label fw-bold"
@@ -207,13 +223,10 @@ const validateForm = () => {
             >
               {{ suburbError }}
             </div>
-
           </div>
-
 
           <!-- Interest -->
           <div class="mb-4">
-
             <label
               for="volunteerInterest"
               class="form-label fw-bold"
@@ -254,9 +267,7 @@ const validateForm = () => {
             >
               {{ interestError }}
             </div>
-
           </div>
-
 
           <button
             type="submit"
@@ -264,9 +275,7 @@ const validateForm = () => {
           >
             Register Interest
           </button>
-
         </form>
-
 
         <!-- Successful validation -->
         <div
@@ -276,10 +285,7 @@ const validateForm = () => {
         >
           {{ successMessage }}
         </div>
-
       </div>
-
     </section>
-
   </main>
 </template>
