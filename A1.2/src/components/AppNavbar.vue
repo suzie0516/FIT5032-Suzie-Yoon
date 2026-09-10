@@ -666,12 +666,7 @@ const handleLogout = () => {
 const goToAccount = () => {
   closeMenu()
 
-  /*
-    /account will be connected in the next step.
-  */
-  console.log(
-    'My Account page will be connected next.',
-  )
+  router.push('/account')
 }
 
 
@@ -682,13 +677,7 @@ const goToAccount = () => {
 const goToAdmin = () => {
   closeMenu()
 
-  /*
-    /admin will be connected when C.2
-    role-based authentication is implemented.
-  */
-  console.log(
-    'Admin Dashboard will be connected later.',
-  )
+  router.push('/admin')
 }
 
 
@@ -1176,4 +1165,5 @@ onBeforeUnmount(() => {
     gap: 6px;
   }
 }
+
 </style>
