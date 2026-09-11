@@ -14,6 +14,8 @@ import AccountView from '../views/AccountView.vue'
 
 import AdminView from '../views/AdminView.vue'
 
+import RatingView from '../views/RatingView.vue'
+
 import { currentUser } from '../utils/auth'
 
 
@@ -72,6 +74,12 @@ const router = createRouter({
         requiresAuth: true,
         requiresAdmin: true,
       },
+    },
+
+    {
+      path: '/design-challenge',
+      name: 'designChallenge',
+      component: RatingView,
     },
 
   ],

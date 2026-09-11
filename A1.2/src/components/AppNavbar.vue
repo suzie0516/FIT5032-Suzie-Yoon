@@ -274,10 +274,15 @@
                 </span>
               </li>
 
+              <!-- C.3 COMMUNITY RATING -->
               <li>
-                <span class="dropdown-item coming-item">
+                <RouterLink
+                  class="dropdown-item"
+                  to="/design-challenge"
+                  @click="closeMenu"
+                >
                   Community Rating
-                </span>
+                </RouterLink>
               </li>
             </ul>
           </li>
