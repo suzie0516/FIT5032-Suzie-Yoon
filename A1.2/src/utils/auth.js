@@ -8,39 +8,25 @@ import { ref, computed } from 'vue'
 // Public registration does not allow users to choose
 // the administrator role.
 
-const ADMIN_EMAIL = 'admin@potsandplants.org.au'
+const ADMIN_EMAIL =
+  'admin@potsandplants.org.au'
 
-const ADMIN_PASSWORD =
-  'GreenAdmin1!'
+/*
+  Store only the pre-computed password hash
+  for the internal demonstration account.
 
-// --------------------------------
-// Hash password
-// --------------------------------
-const hashPassword = async (plainPassword) => {
-  const data =
-    new TextEncoder().encode(plainPassword)
+  The plain-text administrator password is
+  not stored in the application source.
+*/
+const ADMIN_PASSWORD_HASH =
+  '18027cd8bda59cdbea94d513a6d70289e6f2e212a12cc996c4586b9d7792071e'
 
-  const hashBuffer =
-    await crypto.subtle.digest(
-      'SHA-256',
-      data,
-    )
-
-  return Array.from(
-    new Uint8Array(hashBuffer),
-  )
-    .map((byte) =>
-      byte
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')
-}
 
 // --------------------------------
 // Create internal administrator
 // --------------------------------
-const initialiseAdminAccount = async () => {
+
+const initialiseAdminAccount = () => {
   let users = []
 
   try {
@@ -56,6 +42,7 @@ const initialiseAdminAccount = async () => {
     users = []
   }
 
+
   const adminAlreadyExists =
     users.some(
       (user) =>
@@ -65,22 +52,29 @@ const initialiseAdminAccount = async () => {
         ADMIN_EMAIL,
     )
 
+
   if (adminAlreadyExists) {
     return
   }
 
-  const passwordHash =
-    await hashPassword(ADMIN_PASSWORD)
 
   const adminUser = {
     id: 'internal-admin',
-    fullName: 'Pots & Plants Administrator',
+
+    fullName:
+      'Pots & Plants Administrator',
+
     email: ADMIN_EMAIL,
-    passwordHash,
+
+    passwordHash:
+      ADMIN_PASSWORD_HASH,
+
     role: 'admin',
   }
 
+
   users.push(adminUser)
+
 
   localStorage.setItem(
     'users',
@@ -88,31 +82,40 @@ const initialiseAdminAccount = async () => {
   )
 }
 
+
 // Initialise the internal staff account.
-// Registration remains available only for normal users.
+// Registration remains available only
+// for normal users.
 initialiseAdminAccount()
 
 
 // --------------------------------
 // Load current signed-in user
 // --------------------------------
+
 const loadCurrentUser = () => {
   try {
     const storedUser =
-      localStorage.getItem('currentUser')
+      localStorage.getItem(
+        'currentUser',
+      )
 
     if (!storedUser) {
       return null
     }
 
     return JSON.parse(storedUser)
+
   } catch {
     return null
   }
 }
 
 
-// Shared reactive authentication state
+// --------------------------------
+// Shared authentication state
+// --------------------------------
+
 const currentUser =
   ref(loadCurrentUser())
 
@@ -120,31 +123,52 @@ const currentUser =
 // --------------------------------
 // Authentication status
 // --------------------------------
-const isAuthenticated = computed(() => {
-  return currentUser.value !== null
-})
+
+const isAuthenticated =
+  computed(() => {
+    return currentUser.value !== null
+  })
 
 
 // --------------------------------
 // Role checks
 // --------------------------------
-const isAdmin = computed(() => {
-  return currentUser.value?.role === 'admin'
-})
+
+const isAdmin =
+  computed(() => {
+    return (
+      currentUser.value?.role ===
+      'admin'
+    )
+  })
 
 
 // --------------------------------
 // Sign in
 // --------------------------------
+
 const setCurrentUser = (user) => {
+  /*
+    Only information required for the
+    active session is stored.
+
+    The password hash is deliberately
+    excluded from currentUser.
+  */
   const sessionUser = {
     id: user.id,
+
     fullName: user.fullName,
+
     email: user.email,
+
     role: user.role,
   }
 
-  currentUser.value = sessionUser
+
+  currentUser.value =
+    sessionUser
+
 
   localStorage.setItem(
     'currentUser',
@@ -156,6 +180,7 @@ const setCurrentUser = (user) => {
 // --------------------------------
 // Sign out
 // --------------------------------
+
 const logout = () => {
   currentUser.value = null
 
@@ -168,6 +193,7 @@ const logout = () => {
 // --------------------------------
 // Export shared authentication state
 // --------------------------------
+
 export {
   currentUser,
   isAuthenticated,
