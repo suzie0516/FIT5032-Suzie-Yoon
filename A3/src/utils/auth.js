@@ -1,203 +1,99 @@
+
 import { ref, computed } from 'vue'
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signOut,
+} from 'firebase/auth'
+import { auth } from '../firebase'
 
-// --------------------------------
-// Internal administrator account
-// --------------------------------
+const currentUser = ref(null)
+const authReady = ref(false)
 
-// This administrator account is created internally.
-// Public registration does not allow users to choose
-// the administrator role.
+const isAuthenticated = computed(() => currentUser.value !== null)
+const isAdmin = computed(() => currentUser.value?.role === 'admin')
 
-const ADMIN_EMAIL =
-  'admin@potsandplants.org.au'
+const toSessionUser = (user, role = 'user') => ({
+  id: user.uid,
+  fullName: user.displayName || '',
+  email: user.email,
+  role,
+})
 
-/*
-  Store only the pre-computed password hash
-  for the internal demonstration account.
-
-  The plain-text administrator password is
-  not stored in the application source.
-*/
-const ADMIN_PASSWORD_HASH =
-  '18027cd8bda59cdbea94d513a6d70289e6f2e212a12cc996c4586b9d7792071e'
-
-
-// --------------------------------
-// Create internal administrator
-// --------------------------------
-
-const initialiseAdminAccount = () => {
-  let users = []
-
-  try {
-    const storedUsers =
-      JSON.parse(
-        localStorage.getItem('users'),
-      )
-
-    if (Array.isArray(storedUsers)) {
-      users = storedUsers
-    }
-  } catch {
-    users = []
-  }
-
-
-  const adminAlreadyExists =
-    users.some(
-      (user) =>
-        user.email
-          ?.trim()
-          .toLowerCase() ===
-        ADMIN_EMAIL,
-    )
-
-
-  if (adminAlreadyExists) {
-    return
-  }
-
-
-  const adminUser = {
-    id: 'internal-admin',
-
-    fullName:
-      'Pots & Plants Administrator',
-
-    email: ADMIN_EMAIL,
-
-    passwordHash:
-      ADMIN_PASSWORD_HASH,
-
-    role: 'admin',
-  }
-
-
-  users.push(adminUser)
-
-
-  localStorage.setItem(
-    'users',
-    JSON.stringify(users),
-  )
+const getUserRole = async (user) => {
+  const token = await user.getIdTokenResult()
+  return token.claims.admin === true ? 'admin' : 'user'
 }
 
+onAuthStateChanged(
+  auth,
+  async (user) => {
+    if (user) {
+      try {
+        const role = await getUserRole(user)
 
-// Initialise the internal staff account.
-// Registration remains available only
-// for normal users.
-initialiseAdminAccount()
-
-
-// --------------------------------
-// Load current signed-in user
-// --------------------------------
-
-const loadCurrentUser = () => {
-  try {
-    const storedUser =
-      localStorage.getItem(
-        'currentUser',
-      )
-
-    if (!storedUser) {
-      return null
+        if (auth.currentUser?.uid === user.uid) {
+          currentUser.value = toSessionUser(user, role)
+        }
+      } catch (error) {
+        console.error('Unable to load account permissions:', error)
+        currentUser.value = null
+      }
+    } else {
+      currentUser.value = null
     }
 
-    return JSON.parse(storedUser)
+    authReady.value = true
+  },
+  (error) => {
+    console.error('Authentication error:', error)
+    currentUser.value = null
+    authReady.value = true
+  },
+)
 
-  } catch {
-    return null
-  }
-}
-
-
-// --------------------------------
-// Shared authentication state
-// --------------------------------
-
-const currentUser =
-  ref(loadCurrentUser())
-
-
-// --------------------------------
-// Authentication status
-// --------------------------------
-
-const isAuthenticated =
-  computed(() => {
-    return currentUser.value !== null
-  })
-
-
-// --------------------------------
-// Role checks
-// --------------------------------
-
-const isAdmin =
-  computed(() => {
-    return (
-      currentUser.value?.role ===
-      'admin'
-    )
-  })
-
-
-// --------------------------------
-// Sign in
-// --------------------------------
-
-const setCurrentUser = (user) => {
-  /*
-    Only information required for the
-    active session is stored.
-
-    The password hash is deliberately
-    excluded from currentUser.
-  */
-  const sessionUser = {
-    id: user.id,
-
-    fullName: user.fullName,
-
-    email: user.email,
-
-    role: user.role,
-  }
-
-
-  currentUser.value =
-    sessionUser
-
-
-  localStorage.setItem(
-    'currentUser',
-    JSON.stringify(sessionUser),
+const loginUser = async (email, password) => {
+  const result = await signInWithEmailAndPassword(
+    auth,
+    email.trim(),
+    password,
   )
+
+  const role = await getUserRole(result.user)
+  currentUser.value = toSessionUser(result.user, role)
+
+  return result.user
 }
 
+const registerUser = async (fullName, email, password) => {
+  const result = await createUserWithEmailAndPassword(
+    auth,
+    email.trim(),
+    password,
+  )
 
-// --------------------------------
-// Sign out
-// --------------------------------
+  await updateProfile(result.user, {
+    displayName: fullName.trim().replace(/\s+/g, ' '),
+  })
 
-const logout = () => {
+  currentUser.value = toSessionUser(result.user)
+
+  return result.user
+}
+
+const logout = async () => {
+  await signOut(auth)
   currentUser.value = null
-
-  localStorage.removeItem(
-    'currentUser',
-  )
 }
-
-
-// --------------------------------
-// Export shared authentication state
-// --------------------------------
 
 export {
   currentUser,
+  authReady,
   isAuthenticated,
   isAdmin,
-  setCurrentUser,
+  loginUser,
+  registerUser,
   logout,
 }
