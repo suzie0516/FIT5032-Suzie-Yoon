@@ -30,53 +30,16 @@ const humeCoordinates = [-37.5980, 144.9190]
 
 const wyndhamCoordinates = [-37.8999, 144.6611]
 
-const locations = [
-
-  {
-
-    name: 'Melbourne',
-
-    coordinates: melbourneCoordinates,
-
-  },
-
-  {
-
-    name: 'Clayton',
-
-    coordinates: claytonCoordinates,
-
-  },
-
-  {
-
-    name: 'Brimbank',
-
-    coordinates: brimbankCoordinates,
-
-  },
-
-  {
-
-    name: 'Hume',
-
-    coordinates: humeCoordinates,
-
-  },
-
-  {
-
-    name: 'Wyndham',
-
-    coordinates: wyndhamCoordinates,
-
-  },
-
-]
 // Search
 const searchQuery = ref('')
 
 const searchMessage = ref('')
+
+const searchResult = ref(null)
+
+const isSearching = ref(false)
+
+let lastSearchTime = 0
 // Map settings
 const mapCenter = ref(melbourneCoordinates)
 
@@ -104,47 +67,74 @@ const moveMap = (coordinates, newZoom = 13) => {
 
 }
 // Search location
-const searchLocation = () => {
+const searchLocation = async () => {
+  const query = searchQuery.value.trim()
 
-  const query =
-
-    searchQuery.value.trim().toLowerCase()
-
-  if (query === '') {
-
-    searchMessage.value =
-
-      'Please enter a suburb, postcode or project.'
-
+  if (!query) {
+    searchMessage.value = 'Enter a suburb, postcode or address.'
     return
-
   }
 
-  const location = locations.find(
+  if (isSearching.value) return
 
-    (item) =>
-
-      item.name.toLowerCase() === query,
-
-  )
-
-  if (!location) {
-
-    searchMessage.value =
-
-      'Location not found. Try Melbourne, Clayton, Brimbank, Hume or Wyndham.'
-
+  // The public search service is limited to one request per second.
+  if (Date.now() - lastSearchTime < 1100) {
+    searchMessage.value = 'Please wait a moment before searching again.'
     return
-
   }
 
-  moveMap(location.coordinates, 13)
+  isSearching.value = true
+  lastSearchTime = Date.now()
+  searchMessage.value = 'Searching locations...'
 
-  searchMessage.value =
+  try {
+    const params = new URLSearchParams({
+      format: 'jsonv2',
+      countrycodes: 'au',
+      limit: '1',
+      addressdetails: '1',
+      viewbox: '140.9,-33.9,150.1,-39.3',
+    })
 
-    `Showing results for: ${location.name}`
+    if (/^\d{4}$/.test(query)) {
+      params.set('postalcode', query)
+      params.set('country', 'Australia')
+    } else {
+      params.set('q', query)
+    }
 
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+      { headers: { Accept: 'application/json' } },
+    )
+
+    if (!response.ok) throw new Error('Location search unavailable')
+
+    const results = await response.json()
+    const place = results[0]
+
+    if (!place) {
+      searchResult.value = null
+      searchMessage.value = 'No matching Australian location found.'
+      return
+    }
+
+    const coordinates = [Number(place.lat), Number(place.lon)]
+    if (!coordinates.every(Number.isFinite)) throw new Error('Invalid coordinates')
+
+    searchResult.value = {
+      coordinates,
+      name: place.display_name,
+    }
+    moveMap(coordinates, /^\d{4}$/.test(query) ? 13 : 15)
+    searchMessage.value = `Showing: ${place.display_name}`
+  } catch {
+    searchMessage.value = 'Search failed. Check your connection and try again.'
+  } finally {
+    isSearching.value = false
+  }
 }
+
 // My location
 const useMyLocation = () => {
 
@@ -328,7 +318,7 @@ const useMyLocation = () => {
 
                 class="form-control search-input"
 
-                placeholder="Search suburb, postcode or project"
+                placeholder="Search suburb, postcode or address"
 
                 @keyup.enter="searchLocation"
 
@@ -345,10 +335,11 @@ const useMyLocation = () => {
                 type="button"
 
                 @click="searchLocation"
+                :disabled="isSearching"
 
               >
 
-                Search
+                {{ isSearching ? 'Searching...' : 'Search' }}
 
               </button>
 
@@ -571,6 +562,13 @@ const useMyLocation = () => {
               attribution="&copy; OpenStreetMap contributors"
 
             />
+
+            <LMarker
+              v-if="searchResult"
+              :lat-lng="searchResult.coordinates"
+            >
+              <LPopup>{{ searchResult.name }}</LPopup>
+            </LMarker>
 
             <!-- PRIORITY AREA -->
 
@@ -835,6 +833,10 @@ const useMyLocation = () => {
             </LMarker>
 
           </LMap>
+
+          <p class="small text-muted mt-2">
+            Place search data © OpenStreetMap contributors (Nominatim).
+          </p>
 
         </div>
 
