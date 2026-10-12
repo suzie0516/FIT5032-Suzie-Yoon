@@ -11,6 +11,7 @@ import AccountView from '../views/AccountView.vue'
 import AdminView from '../views/AdminView.vue'
 import RatingView from '../views/RatingView.vue'
 import TablesDemoView from '../views/TablesDemoView.vue'
+import EmailView from '../views/EmailView.vue'
 
 import { authReady, isAuthenticated, isAdmin } from '../utils/auth'
 
@@ -61,6 +62,14 @@ const router = createRouter({
       },
     },
     {
+      path: '/email',
+      name: 'email',
+      component: EmailView,
+      meta: {
+        requiresAuth: true,
+      },
+    },
+    {
       path: '/tables',
       name: 'tables',
       component: TablesDemoView,
@@ -73,7 +82,6 @@ const router = createRouter({
   ],
 })
 
-// Wait until Firebase restores the user's session.
 const waitForAuth = () => {
   if (authReady.value) {
     return Promise.resolve()
