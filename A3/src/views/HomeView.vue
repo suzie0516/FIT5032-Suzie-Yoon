@@ -1,6 +1,6 @@
 <script setup>
 
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 
 import { RouterLink } from 'vue-router'
 
@@ -15,6 +15,8 @@ import {
   LMarker,
 
   LPopup,
+
+  LPolyline,
 
 } from '@vue-leaflet/vue-leaflet'
 
@@ -36,6 +38,11 @@ const searchQuery = ref('')
 const searchMessage = ref('')
 
 const searchResult = ref(null)
+const currentLocation = ref(null)
+const routePoints = ref([])
+const routeMessage = ref('')
+const isRouting = ref(false)
+const mapRef = ref(null)
 
 const isSearching = ref(false)
 
@@ -69,6 +76,8 @@ const moveMap = (coordinates, newZoom = 13) => {
 // Search location
 const searchLocation = async () => {
   const query = searchQuery.value.trim()
+  routePoints.value = []
+  routeMessage.value = ''
 
   if (!query) {
     searchMessage.value = 'Enter a suburb, postcode or address.'
@@ -164,6 +173,9 @@ const useMyLocation = () => {
 
       ]
 
+      currentLocation.value = coordinates
+      routePoints.value = []
+      routeMessage.value = ''
       moveMap(coordinates, 15)
 
       searchMessage.value =
@@ -182,6 +194,44 @@ const useMyLocation = () => {
 
   )
 
+}
+
+
+// Draw a road route from the user's location to the searched place.
+const getRoute = async () => {
+  if (!currentLocation.value || !searchResult.value || isRouting.value) return
+
+  const [fromLat, fromLon] = currentLocation.value
+  const [toLat, toLon] = searchResult.value.coordinates
+  const url = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson`
+
+  isRouting.value = true
+  routePoints.value = []
+  routeMessage.value = 'Finding a driving route...'
+
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Routing service unavailable')
+
+    const data = await response.json()
+    const route = data.routes?.[0]
+    if (data.code !== 'Ok' || !route?.geometry?.coordinates?.length) {
+      routeMessage.value = 'No driving route found for these locations.'
+      return
+    }
+
+    routePoints.value = route.geometry.coordinates.map(([lon, lat]) => [lat, lon])
+    const km = (route.distance / 1000).toFixed(1)
+    const minutes = Math.round(route.duration / 60)
+    routeMessage.value = `Driving route: ${km} km, about ${minutes} minutes (estimate; no live traffic).`
+
+    await nextTick()
+    mapRef.value?.leafletObject?.fitBounds(routePoints.value, { padding: [30, 30] })
+  } catch {
+    routeMessage.value = 'Unable to calculate a route. Please try again later.'
+  } finally {
+    isRouting.value = false
+  }
 }
 
 </script>
@@ -365,6 +415,22 @@ const useMyLocation = () => {
 
           </div>
 
+          <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+            <button
+              class="btn btn-primary"
+              type="button"
+              :disabled="!currentLocation || !searchResult || isRouting"
+              @click="getRoute"
+            >
+              {{ isRouting ? 'Calculating route...' : 'Route from My Location' }}
+            </button>
+            <span v-if="!currentLocation" class="small text-muted">Select My Location first.</span>
+            <span v-else-if="!searchResult" class="small text-muted">Search a destination first.</span>
+          </div>
+          <p v-if="routeMessage" class="search-message" role="status" aria-live="polite">
+            {{ routeMessage }}
+          </p>
+
           <p
 
             v-if="searchMessage"
@@ -543,6 +609,7 @@ const useMyLocation = () => {
 
           <LMap
 
+            ref="mapRef"
             :key="mapKey"
 
             :zoom="zoom"
@@ -569,6 +636,17 @@ const useMyLocation = () => {
             >
               <LPopup>{{ searchResult.name }}</LPopup>
             </LMarker>
+
+            <LMarker v-if="currentLocation" :lat-lng="currentLocation">
+              <LPopup>My Location (route starting point)</LPopup>
+            </LMarker>
+
+            <LPolyline
+              v-if="routePoints.length"
+              :lat-lngs="routePoints"
+              color="#2563eb"
+              :weight="5"
+            />
 
             <!-- PRIORITY AREA -->
 
@@ -835,7 +913,7 @@ const useMyLocation = () => {
           </LMap>
 
           <p class="small text-muted mt-2">
-            Place search data © OpenStreetMap contributors (Nominatim).
+            Place search © OpenStreetMap contributors (Nominatim). Routes © OpenStreetMap contributors, OSRM demo service. Routing estimates exclude live traffic.
           </p>
 
         </div>
