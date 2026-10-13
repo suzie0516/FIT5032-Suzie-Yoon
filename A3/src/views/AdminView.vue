@@ -1,51 +1,61 @@
-<script setup>
-import { computed } from 'vue'
+﻿<script setup>
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppNavbar from '../components/AppNavbar.vue'
+import { auth } from '../firebase'
 import { currentUser } from '../utils/auth'
 
 const router = useRouter()
 
-const registeredUsers = computed(() => {
-  try {
-    const storedUsers = JSON.parse(
-      localStorage.getItem('users'),
-    )
+const users = ref([])
+const totalUsers = ref(0)
+const totalMembers = ref(0)
+const totalAdmins = ref(0)
+const loading = ref(false)
+const error = ref('')
 
-    if (!Array.isArray(storedUsers)) {
-      return []
+const loadUsers = async () => {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const token = await auth.currentUser.getIdToken(true)
+
+    const baseUrl = import.meta.env.VITE_FUNCTIONS_BASE_URL
+
+    if (!baseUrl) {
+      throw new Error('Firebase Functions URL is missing.')
     }
 
-    return storedUsers.map((user) => ({
-      id: user.id,
-      fullName: user.fullName,
-      email: user.email,
-      role: user.role,
-    }))
-  } catch {
-    return []
+    const response = await fetch(`${baseUrl}/adminOverview`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Administrator access required.')
+      }
+
+      throw new Error('Unable to load account data.')
+    }
+
+    const data = await response.json()
+
+    users.value = data.users
+    totalUsers.value = data.totalUsers
+    totalMembers.value = data.totalMembers
+    totalAdmins.value = data.totalAdmins
+  } catch (err) {
+    console.error(err)
+    error.value = err.message
+  } finally {
+    loading.value = false
   }
-})
-
-const totalUsers = computed(() => {
-  return registeredUsers.value.length
-})
-
-const totalMembers = computed(() => {
-  return registeredUsers.value.filter(
-    (user) => user.role === 'user',
-  ).length
-})
-
-const totalAdmins = computed(() => {
-  return registeredUsers.value.filter(
-    (user) => user.role === 'admin',
-  ).length
-})
-
-const goToAccount = () => {
-  router.push('/account')
 }
+
+onMounted(loadUsers)
 </script>
 
 <template>
@@ -55,130 +65,91 @@ const goToAccount = () => {
     <main class="admin-page">
       <div class="container">
         <section class="admin-heading">
-          <p class="section-label">
-            STAFF ACCESS
-          </p>
-
+          <p class="section-label">STAFF ACCESS</p>
           <h1>Admin Dashboard</h1>
-
-          <p>
-            Manage and review registered accounts for
-            Pots & Plants Melbourne.
-          </p>
+          <p>Manage and review registered accounts for Pots & Plants Melbourne.</p>
         </section>
 
         <section class="welcome-card">
           <div>
-            <p class="welcome-label">
-              Signed in as
-            </p>
-
-            <h2>
-              {{ currentUser?.fullName }}
-            </h2>
-
-            <p class="admin-email">
-              {{ currentUser?.email }}
-            </p>
+            <p class="welcome-label">Signed in as</p>
+            <h2>{{ currentUser?.fullName || 'Administrator' }}</h2>
+            <p class="admin-email">{{ currentUser?.email }}</p>
           </div>
 
-          <span class="admin-badge">
-            Administrator
-          </span>
+          <span class="admin-badge">Administrator</span>
         </section>
 
-        <section class="stats-grid">
+        <div v-if="error" class="alert alert-danger" role="alert">
+          {{ error }}
+        </div>
+
+        <section class="stats-grid" aria-label="Account statistics">
           <article class="stat-card">
             <p>Total Accounts</p>
-
-            <strong>
-              {{ totalUsers }}
-            </strong>
+            <strong>{{ loading ? '...' : totalUsers }}</strong>
           </article>
 
           <article class="stat-card">
             <p>Members</p>
-
-            <strong>
-              {{ totalMembers }}
-            </strong>
+            <strong>{{ loading ? '...' : totalMembers }}</strong>
           </article>
 
           <article class="stat-card">
             <p>Administrators</p>
-
-            <strong>
-              {{ totalAdmins }}
-            </strong>
+            <strong>{{ loading ? '...' : totalAdmins }}</strong>
           </article>
         </section>
 
         <section class="users-card">
           <div class="table-heading">
             <div>
-              <p class="section-label">
-                USER MANAGEMENT
-              </p>
-
+              <p class="section-label">USER MANAGEMENT</p>
               <h2>Registered Accounts</h2>
             </div>
 
-            <button
-              type="button"
-              class="btn account-btn"
-              @click="goToAccount"
-            >
-              My Account
-            </button>
+            <div class="d-flex gap-2">
+              <button
+                type="button"
+                class="btn account-btn"
+                :disabled="loading"
+                @click="loadUsers"
+              >
+                {{ loading ? 'Loading...' : 'Refresh' }}
+              </button>
+
+              <button
+                type="button"
+                class="btn account-btn"
+                @click="router.push('/account')"
+              >
+                My Account
+              </button>
+            </div>
           </div>
 
-          <div
-            v-if="registeredUsers.length > 0"
-            class="table-responsive"
-          >
+          <p v-if="loading" role="status">Loading Firebase accounts...</p>
+
+          <div v-else-if="users.length" class="table-responsive">
             <table class="table align-middle">
               <thead>
                 <tr>
-                  <th scope="col">
-                    Name
-                  </th>
-
-                  <th scope="col">
-                    Email
-                  </th>
-
-                  <th scope="col">
-                    Role
-                  </th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Role</th>
                 </tr>
               </thead>
 
               <tbody>
-                <tr
-                  v-for="user in registeredUsers"
-                  :key="user.id"
-                >
-                  <td>
-                    {{ user.fullName }}
-                  </td>
-
-                  <td>
-                    {{ user.email }}
-                  </td>
-
+                <tr v-for="user in users" :key="user.id">
+                  <td>{{ user.fullName }}</td>
+                  <td>{{ user.email }}</td>
                   <td>
                     <span
                       class="role-badge"
-                      :class="{
-                        'admin-role':
-                          user.role === 'admin',
-                      }"
+                      :class="{ 'admin-role': user.role === 'admin' }"
                     >
-                      {{
-                        user.role === 'admin'
-                          ? 'Administrator'
-                          : 'Member'
-                      }}
+                      {{ user.role === 'admin' ? 'Administrator' : 'Member' }}
                     </span>
                   </td>
                 </tr>
@@ -186,29 +157,22 @@ const goToAccount = () => {
             </table>
           </div>
 
-          <div
-            v-else
-            class="empty-state"
-          >
+          <p v-else-if="!error" class="empty-state">
             No registered accounts are available.
-          </div>
+          </p>
         </section>
 
         <section class="security-note">
           <h2>Restricted Area</h2>
-
           <p>
-            This dashboard is available only to
-            authenticated administrator accounts.
-            Standard member accounts are not authorised
-            to access this page.
+            Account information is retrieved from Firebase Authentication.
+            Access is verified by a protected Cloud Function.
           </p>
         </section>
       </div>
     </main>
   </div>
 </template>
-
 <style scoped>
 .admin-page {
   min-height: calc(100vh - 79px);
