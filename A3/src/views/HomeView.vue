@@ -17,11 +17,14 @@ import {
   LPopup,
 
   LPolyline,
+  LCircleMarker,
 
 } from '@vue-leaflet/vue-leaflet'
 
 import 'leaflet/dist/leaflet.css'
+
 // Location data
+
 const melbourneCoordinates = [-37.8136, 144.9631]
 
 const claytonCoordinates = [-37.9161, 145.1164]
@@ -33,37 +36,238 @@ const humeCoordinates = [-37.5980, 144.9190]
 const wyndhamCoordinates = [-37.8999, 144.6611]
 
 // Search
+
 const searchQuery = ref('')
 
 const searchMessage = ref('')
 
 const searchResult = ref(null)
+
 const currentLocation = ref(null)
+
 const routePoints = ref([])
+
 const routeMessage = ref('')
+
 const isRouting = ref(false)
+
 const mapRef = ref(null)
 
 const isSearching = ref(false)
 
 let lastSearchTime = 0
+
 // Map settings
+
 const mapCenter = ref(melbourneCoordinates)
 
 const zoom = ref(11)
 
 const mapKey = ref(0)
-// Map layers
-const priorityAreas = ref(true)
 
-const activeProjects = ref(true)
+// Greater Melbourne tree points (Vicmap) and City of Melbourne planting plans
 
-const plantedSites = ref(true)
+const showTrees = ref(false)
+const showPlantingSchedule = ref(false)
+const trees = ref([])
+const plantingSchedules = ref([])
+const layersLoading = ref(false)
+const treesMessage = ref('Select Existing Trees to explore Vicmap tree points across metropolitan Melbourne.')
+const scheduleMessage = ref('Select Planting Schedule to load indicative street schedules.')
 
-const plantSuppliers = ref(false)
+const cityDataBase = 'https://data.melbourne.vic.gov.au/api/explore/v2.1/catalog/datasets'
+const vicmapTreeEndpoint = 'https://services-ap1.arcgis.com/P744lA0wf4LlBZ84/arcgis/rest/services/Vicmap_Vegetation_Tree_Urban/FeatureServer/0/query'
+let leafletMap = null
+let treeFetchSequence = 0
+let treeRequestTimer = null
 
-const donationPoints = ref(false)
+// The official Vicmap dataset covers metropolitan Melbourne. Fetch only what
+// is visible instead of displaying the first records from the CBD.
+const loadVisibleTrees = async () => {
+  if (!showTrees.value) return
+  const map = leafletMap || mapRef.value?.leafletObject
+  if (!map) {
+    treesMessage.value = 'Waiting for the map to initialise...'
+    return
+  }
+  const currentSequence = ++treeFetchSequence
+  const bounds = map.getBounds()
+  const west = bounds.getWest()
+  const east = bounds.getEast()
+  const south = bounds.getSouth()
+  const north = bounds.getNorth()
+  const midX = (west + east) / 2
+  const midY = (south + north) / 2
+  const regions = [
+    [west, south, midX, midY],
+    [midX, south, east, midY],
+    [west, midY, midX, north],
+    [midX, midY, east, north],
+  ]
+  treesMessage.value = 'Loading Vicmap tree records for the visible map area...'
+  try {
+    const pages = await Promise.all(regions.map(async ([xmin, ymin, xmax, ymax]) => {
+      const params = new URLSearchParams({
+        where: '1=1',
+        geometry: JSON.stringify({xmin, ymin, xmax, ymax, spatialReference: {wkid: 4326}}),
+        geometryType: 'esriGeometryEnvelope',
+        inSR: '4326',
+        spatialRel: 'esriSpatialRelIntersects',
+        outFields: 'ufi',
+        outSR: '4326',
+        resultRecordCount: '250',
+        f: 'geojson',
+      })
+      const response = await fetch(`${vicmapTreeEndpoint}?${params}`)
+      if (!response.ok) throw new Error(`Vicmap service returned ${response.status}`)
+      const data = await response.json()
+      if (data.error) throw new Error(data.error.message || 'Vicmap query failed')
+      if (!Array.isArray(data.features)) throw new Error('Unexpected Vicmap GeoJSON response')
+      return data.features
+    }))
+    if (currentSequence !== treeFetchSequence || !showTrees.value) return
+    const seen = new Set()
+    trees.value = pages.flat().flatMap((feature, index) => {
+      const coordinates = feature.geometry?.coordinates
+      if (!Array.isArray(coordinates) || coordinates.length < 2) return []
+      const [lon, lat] = coordinates.map(Number)
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return []
+      const id = String(feature.properties?.UFI || feature.id || `${lat}-${lon}`)
+      if (seen.has(id)) return []
+      seen.add(id)
+      return [{mapId: `vicmap-${id}-${index}`, mapCoordinates: [lat, lon]}]
+    })
+    treesMessage.value = trees.value.length
+      ? `${trees.value.length} Vicmap tree points shown in this map view (limited sample; pan or zoom to explore other suburbs).`
+      : 'No Vicmap tree points returned for this map view. Try a different suburb or zoom in.'
+  } catch (error) {
+    if (currentSequence !== treeFetchSequence || !showTrees.value) return
+    trees.value = []
+    treesMessage.value = `Vicmap tree data unavailable: ${error.message}`
+  }
+}
+
+const onMapReady = (map) => {
+  leafletMap = map
+  if (showTrees.value) loadVisibleTrees()
+}
+
+const onMapMoved = () => {
+  if (!showTrees.value) return
+  clearTimeout(treeRequestTimer)
+  treeRequestTimer = setTimeout(loadVisibleTrees, 500)
+}
+
+// City Open Data geo points may be [latitude, longitude] or { lat, lon }.
+// GeoJSON geometry is different: its points use [longitude, latitude].
+const coordinatesOf = (record) => {
+  const valid = (lat, lon) =>
+    Number.isFinite(lat) && Number.isFinite(lon) &&
+    lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 &&
+    lat !== 0 && lon !== 0
+
+  const latitude = Number(record.latitude)
+  const longitude = Number(record.longitude)
+  if (valid(latitude, longitude)) return [latitude, longitude]
+
+  const point = record.geolocation || record.coordinatelocation || record.geo_point_2d
+  if (point && !Array.isArray(point) && typeof point === 'object') {
+    const lat = Number(point.lat ?? point.latitude)
+    const lon = Number(point.lon ?? point.lng ?? point.longitude)
+    if (valid(lat, lon)) return [lat, lon]
+    if (Array.isArray(point.coordinates) && point.coordinates.length >= 2) {
+      const [lonValue, latValue] = point.coordinates.map(Number)
+      if (valid(latValue, lonValue)) return [latValue, lonValue]
+    }
+  }
+  if (Array.isArray(point) && point.length >= 2) {
+    const [lat, lon] = point.map(Number)
+    if (valid(lat, lon)) return [lat, lon]
+  }
+
+  // Some street zones only provide their centroid as a polygon geometry.
+  // Using a geometry point here is only a fallback for placing a marker.
+  const shape = record.geo_shape
+  const getFirstPosition = (coords) => {
+    if (!Array.isArray(coords)) return null
+    if (coords.length >= 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+      const [lon, lat] = coords
+      return valid(lat, lon) ? [lat, lon] : null
+    }
+    for (const item of coords) {
+      const found = getFirstPosition(item)
+      if (found) return found
+    }
+    return null
+  }
+  return shape?.coordinates ? getFirstPosition(shape.coordinates) : null
+}
+
+// The public API paginates records. We sample several page offsets to avoid
+// showing only the first group of streets; this is not a full-city inventory.
+const getCityRecords = async (dataset, pagesToFetch = 5) => {
+  const pageSize = 100
+  const fetchPage = async (offset) => {
+    const url = `${cityDataBase}/${dataset}/records?limit=${pageSize}&offset=${offset}`
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`City data service returned ${response.status}`)
+    const data = await response.json()
+    if (!Array.isArray(data.results)) throw new Error('Unexpected city data response')
+    return data
+  }
+
+  const first = await fetchPage(0)
+  const total = Number(first.total_count) || first.results.length
+  const maximumOffset = Math.min(Math.max(0, total - pageSize), 9900)
+  const pageCount = Math.min(pagesToFetch, Math.ceil(total / pageSize))
+  const offsets = Array.from({ length: Math.max(0, pageCount - 1) }, (_, i) =>
+    Math.floor((i + 1) * maximumOffset / (pageCount - 1)))
+    .filter((offset, index, values) => offset > 0 && values.indexOf(offset) === index)
+  const extra = await Promise.all(offsets.map(fetchPage))
+  const all = [first, ...extra].flatMap((page) => page.results)
+  const seen = new Set()
+  const records = all.map((record, index) => {
+    const mapCoordinates = coordinatesOf(record)
+    const mapId = `${dataset}-${record.com_id || record.segid || record._id || index}`
+    return { ...record, mapCoordinates, mapId }
+  }).filter((record) => {
+    if (!record.mapCoordinates || seen.has(record.mapId)) return false
+    seen.add(record.mapId)
+    return true
+  })
+  return { records, total }
+}
+
+const toggleTrees = () => {
+  showTrees.value = !showTrees.value
+  if (showTrees.value) {
+    loadVisibleTrees()
+  } else {
+    ++treeFetchSequence
+    clearTimeout(treeRequestTimer)
+    treesMessage.value = 'Existing Trees layer hidden.'
+  }
+}
+
+const togglePlanting = async () => {
+  showPlantingSchedule.value = !showPlantingSchedule.value
+  if (!showPlantingSchedule.value || plantingSchedules.value.length) return
+  layersLoading.value = true
+  scheduleMessage.value = 'Loading city planting schedules...'
+  try {
+    const result = await getCityRecords('tree-planting-zone-schedules-with-years-urban-forest', 5)
+    plantingSchedules.value = result.records
+    scheduleMessage.value = `${plantingSchedules.value.length} schedule locations loaded (sample from ${result.total.toLocaleString()} records; indicative plans).`
+  } catch (error) {
+    showPlantingSchedule.value = false
+    scheduleMessage.value = `Planting schedule unavailable: ${error.message}`
+  } finally {
+    layersLoading.value = false
+  }
+}
+
 // Move map
+
 const moveMap = (coordinates, newZoom = 13) => {
 
   mapCenter.value = [...coordinates]
@@ -73,78 +277,125 @@ const moveMap = (coordinates, newZoom = 13) => {
   mapKey.value++
 
 }
+
 // Search location
+
 const searchLocation = async () => {
+
   const query = searchQuery.value.trim()
+
   routePoints.value = []
+
   routeMessage.value = ''
 
   if (!query) {
+
     searchMessage.value = 'Enter a suburb, postcode or address.'
+
     return
+
   }
 
   if (isSearching.value) return
 
   // The public search service is limited to one request per second.
+
   if (Date.now() - lastSearchTime < 1100) {
+
     searchMessage.value = 'Please wait a moment before searching again.'
+
     return
+
   }
 
   isSearching.value = true
+
   lastSearchTime = Date.now()
+
   searchMessage.value = 'Searching locations...'
 
   try {
+
     const params = new URLSearchParams({
+
       format: 'jsonv2',
+
       countrycodes: 'au',
+
       limit: '1',
+
       addressdetails: '1',
+
       viewbox: '140.9,-33.9,150.1,-39.3',
+
     })
 
     if (/^\d{4}$/.test(query)) {
+
       params.set('postalcode', query)
+
       params.set('country', 'Australia')
+
     } else {
+
       params.set('q', query)
+
     }
 
     const response = await fetch(
+
       `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+
       { headers: { Accept: 'application/json' } },
+
     )
 
     if (!response.ok) throw new Error('Location search unavailable')
 
     const results = await response.json()
+
     const place = results[0]
 
     if (!place) {
+
       searchResult.value = null
+
       searchMessage.value = 'No matching Australian location found.'
+
       return
+
     }
 
     const coordinates = [Number(place.lat), Number(place.lon)]
+
     if (!coordinates.every(Number.isFinite)) throw new Error('Invalid coordinates')
 
     searchResult.value = {
+
       coordinates,
+
       name: place.display_name,
+
     }
+
     moveMap(coordinates, /^\d{4}$/.test(query) ? 13 : 15)
+
     searchMessage.value = `Showing: ${place.display_name}`
+
   } catch {
+
     searchMessage.value = 'Search failed. Check your connection and try again.'
+
   } finally {
+
     isSearching.value = false
+
   }
+
 }
 
 // My location
+
 const useMyLocation = () => {
 
   if (!navigator.geolocation) {
@@ -174,8 +425,11 @@ const useMyLocation = () => {
       ]
 
       currentLocation.value = coordinates
+
       routePoints.value = []
+
       routeMessage.value = ''
+
       moveMap(coordinates, 15)
 
       searchMessage.value =
@@ -196,42 +450,64 @@ const useMyLocation = () => {
 
 }
 
-
 // Draw a road route from the user's location to the searched place.
+
 const getRoute = async () => {
+
   if (!currentLocation.value || !searchResult.value || isRouting.value) return
 
   const [fromLat, fromLon] = currentLocation.value
+
   const [toLat, toLon] = searchResult.value.coordinates
+
   const url = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson`
 
   isRouting.value = true
+
   routePoints.value = []
+
   routeMessage.value = 'Finding a driving route...'
 
   try {
+
     const response = await fetch(url)
+
     if (!response.ok) throw new Error('Routing service unavailable')
 
     const data = await response.json()
+
     const route = data.routes?.[0]
+
     if (data.code !== 'Ok' || !route?.geometry?.coordinates?.length) {
+
       routeMessage.value = 'No driving route found for these locations.'
+
       return
+
     }
 
     routePoints.value = route.geometry.coordinates.map(([lon, lat]) => [lat, lon])
+
     const km = (route.distance / 1000).toFixed(1)
+
     const minutes = Math.round(route.duration / 60)
+
     routeMessage.value = `Driving route: ${km} km, about ${minutes} minutes (estimate; no live traffic).`
 
     await nextTick()
+
     mapRef.value?.leafletObject?.fitBounds(routePoints.value, { padding: [30, 30] })
+
   } catch {
+
     routeMessage.value = 'Unable to calculate a route. Please try again later.'
+
   } finally {
+
     isRouting.value = false
+
   }
+
 }
 
 </script>
@@ -239,6 +515,7 @@ const getRoute = async () => {
 <template>
 
   <AppNavbar />
+
 <header class="hero-section">
 
     <div class="container hero-content">
@@ -298,6 +575,7 @@ const getRoute = async () => {
     </div>
 
   </header>
+
 <main>
 
     <section
@@ -326,13 +604,7 @@ const getRoute = async () => {
 
           <p>
 
-            Explore Melbourne's greening
-
-            projects, priority areas,
-
-            planted sites and community
-
-            resources.
+            Search Melbourne locations and routes, and explore tree locations across metropolitan Melbourne alongside City of Melbourne planting plans.
 
           </p>
 
@@ -385,6 +657,7 @@ const getRoute = async () => {
                 type="button"
 
                 @click="searchLocation"
+
                 :disabled="isSearching"
 
               >
@@ -416,19 +689,33 @@ const getRoute = async () => {
           </div>
 
           <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+
             <button
+
               class="btn btn-primary"
+
               type="button"
+
               :disabled="!currentLocation || !searchResult || isRouting"
+
               @click="getRoute"
+
             >
+
               {{ isRouting ? 'Calculating route...' : 'Route from My Location' }}
+
             </button>
+
             <span v-if="!currentLocation" class="small text-muted">Select My Location first.</span>
+
             <span v-else-if="!searchResult" class="small text-muted">Search a destination first.</span>
+
           </div>
+
           <p v-if="routeMessage" class="search-message" role="status" aria-live="polite">
+
             {{ routeMessage }}
+
           </p>
 
           <p
@@ -447,160 +734,49 @@ const getRoute = async () => {
 
         </div>
 
-        <!-- MAP LAYERS -->
+        <!-- OFFICIAL MAP LAYERS -->
 
         <div class="layer-panel">
 
-          <div class="layer-heading">
-
-            Map Layers
-
-          </div>
+          <div class="layer-heading">Map Layers</div>
 
           <div class="layer-options">
 
             <div class="form-check">
 
-              <input
+              <input id="existingTrees" class="form-check-input" type="checkbox"
 
-                id="priorityAreas"
+                :checked="showTrees" :disabled="layersLoading" @change="toggleTrees" />
 
-                v-model="priorityAreas"
-
-                class="form-check-input"
-
-                type="checkbox"
-
-              />
-
-              <label
-
-                class="form-check-label"
-
-                for="priorityAreas"
-
-              >
-
-                Priority areas
-
-              </label>
+              <label for="existingTrees" class="form-check-label"><span class="map-layer-key map-layer-key--trees" aria-hidden="true"></span>Existing Trees</label>
 
             </div>
 
             <div class="form-check">
 
-              <input
+              <input id="plantingSchedule" class="form-check-input" type="checkbox"
 
-                id="activeProjects"
+                :checked="showPlantingSchedule" :disabled="layersLoading" @change="togglePlanting" />
 
-                v-model="activeProjects"
-
-                class="form-check-input"
-
-                type="checkbox"
-
-              />
-
-              <label
-
-                class="form-check-label"
-
-                for="activeProjects"
-
-              >
-
-                Active projects
-
-              </label>
-
-            </div>
-
-            <div class="form-check">
-
-              <input
-
-                id="plantedSites"
-
-                v-model="plantedSites"
-
-                class="form-check-input"
-
-                type="checkbox"
-
-              />
-
-              <label
-
-                class="form-check-label"
-
-                for="plantedSites"
-
-              >
-
-                Planted sites
-
-              </label>
-
-            </div>
-
-            <div class="form-check">
-
-              <input
-
-                id="plantSuppliers"
-
-                v-model="plantSuppliers"
-
-                class="form-check-input"
-
-                type="checkbox"
-
-              />
-
-              <label
-
-                class="form-check-label"
-
-                for="plantSuppliers"
-
-              >
-
-                Plant suppliers
-
-              </label>
-
-            </div>
-
-            <div class="form-check">
-
-              <input
-
-                id="donationPoints"
-
-                v-model="donationPoints"
-
-                class="form-check-input"
-
-                type="checkbox"
-
-              />
-
-              <label
-
-                class="form-check-label"
-
-                for="donationPoints"
-
-              >
-
-                Donation points
-
-              </label>
+              <label for="plantingSchedule" class="form-check-label"><span class="map-layer-key map-layer-key--schedule" aria-hidden="true"></span>Planting Schedule</label>
 
             </div>
 
           </div>
 
+        </div>
+
+        <div class="small text-muted" aria-live="polite">
+          <p class="mb-1">{{ treesMessage }}</p>
+          <p class="mb-1">{{ scheduleMessage }}</p>
+          <p class="mb-0">Tree locations: Vicmap Vegetation Tree Urban (metropolitan Melbourne; representative samples by map view). Planting schedules: City of Melbourne only; not available across all councils.</p>
+        </div>
+
+        <div class="mb-2 d-flex flex-wrap align-items-center gap-2">
+          <button type="button" class="btn btn-outline-success btn-sm" @click="moveMap([-37.83, 145.0], 9)">
+            View Greater Melbourne
+          </button>
+          <span class="small text-muted">Move or zoom the map to refresh green tree locations in your area.</span>
         </div>
 
         <!-- MAP -->
@@ -610,6 +786,10 @@ const getRoute = async () => {
           <LMap
 
             ref="mapRef"
+
+            @ready="onMapReady"
+            @moveend="onMapMoved"
+
             :key="mapKey"
 
             :zoom="zoom"
@@ -631,289 +811,99 @@ const getRoute = async () => {
             />
 
             <LMarker
+
               v-if="searchResult"
+
               :lat-lng="searchResult.coordinates"
+
             >
+
               <LPopup>{{ searchResult.name }}</LPopup>
+
             </LMarker>
 
             <LMarker v-if="currentLocation" :lat-lng="currentLocation">
+
               <LPopup>My Location (route starting point)</LPopup>
+
             </LMarker>
 
             <LPolyline
+
               v-if="routePoints.length"
+
               :lat-lngs="routePoints"
+
               color="#2563eb"
+
               :weight="5"
+
             />
 
-            <!-- PRIORITY AREA -->
+            <!-- Vicmap metropolitan trees and City of Melbourne indicative planting zones. -->
 
-            <LMarker
-
-              v-if="priorityAreas"
-
-              :lat-lng="brimbankCoordinates"
-
+            <LCircleMarker
+              v-for="tree in (showTrees ? trees : [])"
+              :key="tree.mapId"
+              :lat-lng="tree.mapCoordinates"
+              :radius="5"
+              color="#176c37"
+              fill-color="#25a652"
+              :fill-opacity="0.75"
+              :weight="1"
             >
 
               <LPopup>
 
                 <div class="map-popup">
 
-                  <strong>
+                  <strong>Mapped urban tree</strong>
 
-                    Priority Greening Area -
+                  <p>Vicmap tree point (species not provided by this layer).</p>
 
-                    Brimbank
-
-                  </strong>
-
-                  <p>
-
-                    Priority area for urban
-
-                    greening and canopy
-
-                    improvement.
-
-                  </p>
-
-                  <div class="popup-actions">
-
-                    <button
-
-                      type="button"
-
-                      class="popup-link"
-
-                    >
-
-                      View Project
-
-                    </button>
-
-                    <a
-
-                      href="https://www.google.com/maps/dir/?api=1&destination=-37.7810,144.8320"
-
-                      target="_blank"
-
-                      rel="noopener noreferrer"
-
-                    >
-
-                      Get Directions
-
-                    </a>
-
-                  </div>
+                  <p>Source: Victorian Government Vicmap Vegetation Tree Urban.</p>
 
                 </div>
 
               </LPopup>
 
-            </LMarker>
+            </LCircleMarker>
 
-            <!-- ACTIVE PROJECT -->
-
-            <LMarker
-
-              v-if="activeProjects"
-
-              :lat-lng="[-37.7080, 144.9500]"
-
+            <LCircleMarker
+              v-for="site in (showPlantingSchedule ? plantingSchedules : [])"
+              :key="site.mapId"
+              :lat-lng="site.mapCoordinates"
+              :radius="7"
+              color="#9c520b"
+              fill-color="#f4a340"
+              :fill-opacity="0.8"
+              :weight="2"
             >
 
               <LPopup>
 
                 <div class="map-popup">
 
-                  <strong>
+                  <strong>{{ site.segdescr || site.streetname || 'Planting schedule zone' }}</strong>
 
-                    Active Community
+                  <p v-if="site.schedule">Schedule: {{ site.schedule }}</p>
 
-                    Greening Project
+                  <p>Indicative planting schedule; subject to change.</p>
 
-                  </strong>
-
-                  <p>
-
-                    Current community planting
-
-                    and greening project.
-
-                  </p>
-
-                  <a
-
-                    href="https://www.google.com/maps/dir/?api=1&destination=-37.7080,144.9500"
-
-                    target="_blank"
-
-                    rel="noopener noreferrer"
-
-                  >
-
-                    Get Directions
-
-                  </a>
+                  <p>Source: City of Melbourne open data</p>
 
                 </div>
 
               </LPopup>
 
-            </LMarker>
-
-            <!-- PLANTED SITE -->
-
-            <LMarker
-
-              v-if="plantedSites"
-
-              :lat-lng="melbourneCoordinates"
-
-            >
-
-              <LPopup>
-
-                <div class="map-popup">
-
-                  <strong>
-
-                    Melbourne Planted Site
-
-                  </strong>
-
-                  <p>
-
-                    Existing urban planting
-
-                    site.
-
-                  </p>
-
-                  <a
-
-                    href="https://www.google.com/maps/dir/?api=1&destination=-37.8136,144.9631"
-
-                    target="_blank"
-
-                    rel="noopener noreferrer"
-
-                  >
-
-                    Get Directions
-
-                  </a>
-
-                </div>
-
-              </LPopup>
-
-            </LMarker>
-
-            <!-- PLANT SUPPLIER -->
-
-            <LMarker
-
-              v-if="plantSuppliers"
-
-              :lat-lng="[-37.8768, 145.0458]"
-
-            >
-
-              <LPopup>
-
-                <div class="map-popup">
-
-                  <strong>
-
-                    Native Plant Supplier
-
-                  </strong>
-
-                  <p>
-
-                    Supplier of plants for
-
-                    local greening projects.
-
-                  </p>
-
-                  <a
-
-                    href="https://www.google.com/maps/dir/?api=1&destination=-37.8768,145.0458"
-
-                    target="_blank"
-
-                    rel="noopener noreferrer"
-
-                  >
-
-                    Get Directions
-
-                  </a>
-
-                </div>
-
-              </LPopup>
-
-            </LMarker>
-
-            <!-- DONATION POINT -->
-
-            <LMarker
-
-              v-if="donationPoints"
-
-              :lat-lng="[-37.8409, 144.9465]"
-
-            >
-
-              <LPopup>
-
-                <div class="map-popup">
-
-                  <strong>
-
-                    Plant Donation Point
-
-                  </strong>
-
-                  <p>
-
-                    Community plant and
-
-                    greening donation point.
-
-                  </p>
-
-                  <a
-
-                    href="https://www.google.com/maps/dir/?api=1&destination=-37.8409,144.9465"
-
-                    target="_blank"
-
-                    rel="noopener noreferrer"
-
-                  >
-
-                    Get Directions
-
-                  </a>
-
-                </div>
-
-              </LPopup>
-
-            </LMarker>
+            </LCircleMarker>
 
           </LMap>
 
           <p class="small text-muted mt-2">
+
             Place search © OpenStreetMap contributors (Nominatim). Routes © OpenStreetMap contributors, OSRM demo service. Routing estimates exclude live traffic.
+
           </p>
 
         </div>
@@ -921,6 +911,7 @@ const getRoute = async () => {
       </div>
 
     </section>
+
 <section class="support-section">
 
       <div class="container">
@@ -982,7 +973,9 @@ const getRoute = async () => {
               </p>
 
               <button type="button" class="card-link" disabled title="Plant donations are not open yet">
+
                 Donate Plants · Coming soon
+
               </button>
 
             </article>
@@ -1018,7 +1011,9 @@ const getRoute = async () => {
               </p>
 
               <button type="button" class="card-link" disabled title="Project funding is not open yet">
+
                 Fund a Project · Coming soon
+
               </button>
 
             </article>
@@ -1074,6 +1069,7 @@ const getRoute = async () => {
       </div>
 
     </section>
+
 <section class="impact-section">
 
       <div class="container">
@@ -1171,6 +1167,7 @@ const getRoute = async () => {
       </div>
 
     </section>
+
 <section class="events-section">
 
       <div class="container">
@@ -1200,47 +1197,85 @@ const getRoute = async () => {
         </div>
 
         <div class="row g-4">
+
           <div class="col-12 col-md-4">
+
             <article class="event-card event-card--coral">
+
               <img class="event-photo" src="https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&amp;fit=crop&amp;w=900&amp;q=80" alt="Plants being grown in a community garden" loading="lazy" />
+
               <div class="event-details">
+
                 <div class="event-meta"><span class="event-date">SEP <strong>19</strong></span><span class="event-type">COMMUNITY EVENT</span></div>
+
                 <h3>Community Planting Day</h3>
+
                 <p>Join local volunteers for a community planting session.</p>
+
                 <p class="event-status">Past event</p>
+
                 <RouterLink to="/volunteer" class="event-action">Explore volunteering <span aria-hidden="true">→</span></RouterLink>
+
               </div>
+
             </article>
+
           </div>
+
           <div class="col-12 col-md-4">
+
             <article class="event-card event-card--amber">
+
               <img class="event-photo" src="https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?auto=format&amp;fit=crop&amp;w=900&amp;q=80" alt="Lush green plants at a nursery" loading="lazy" />
+
               <div class="event-details">
+
                 <div class="event-meta"><span class="event-date">OCT <strong>04</strong></span><span class="event-type">WORKSHOP</span></div>
+
                 <h3>Native Plant Workshop</h3>
+
                 <p>Learn how to select plants that support local biodiversity.</p>
+
                 <p class="event-status">Past event</p>
+
                 <RouterLink to="/plants" class="event-action">Explore native plants <span aria-hidden="true">→</span></RouterLink>
+
               </div>
+
             </article>
+
           </div>
+
           <div class="col-12 col-md-4">
+
             <article class="event-card event-card--blue">
+
               <img class="event-photo" src="https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&amp;fit=crop&amp;w=900&amp;q=80" alt="Creative indoor space for a design workshop" loading="lazy" />
+
               <div class="event-details">
+
                 <div class="event-meta"><span class="event-date">OCT <strong>18</strong></span><span class="event-type">DESIGN CHALLENGE</span></div>
+
                 <h3>Green Melbourne Design Challenge</h3>
+
                 <p>Explore community designs for a greener Melbourne.</p>
+
                 <RouterLink to="/design-challenge" class="event-action">Explore designs <span aria-hidden="true">→</span></RouterLink>
+
               </div>
+
             </article>
+
           </div>
+
         </div>
+
       </div>
 
     </section>
 
   </main>
+
 <footer class="site-footer">
 
     <div class="container">
@@ -1349,8 +1384,6 @@ const getRoute = async () => {
 
 <style scoped>
 
-
-
 section {
 
   scroll-margin-top: 100px;
@@ -1419,33 +1452,52 @@ section {
 
 }
 
-
-
 .hero-section {
+
   position: relative;
+
   display: flex;
+
   align-items: center;
+
   min-height: 520px;
+
   overflow: hidden;
+
   isolation: isolate;
+
   background: #213a27;
+
 }
 
 .hero-section::before {
+
   content: "";
+
   position: absolute;
+
   inset: -8px;
+
   z-index: -2;
+
   background: url("https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=2000&q=85") center / cover no-repeat;
+
   filter: blur(3px);
+
 }
 
 .hero-section::after {
+
   content: "";
+
   position: absolute;
+
   inset: 0;
+
   z-index: -1;
+
   background: linear-gradient(90deg, rgba(12, 36, 20, .72), rgba(20, 51, 27, .38));
+
 }
 
 .hero-content {
@@ -1572,8 +1624,6 @@ section {
 
 }
 
-
-
 .green-map-section {
 
   padding: 80px 0;
@@ -1664,8 +1714,6 @@ section {
 
 }
 
-
-
 .layer-panel {
 
   display: flex;
@@ -1711,8 +1759,6 @@ section {
   border-color: #35682d;
 
 }
-
-
 
 .map-container {
 
@@ -1761,8 +1807,6 @@ section {
   text-decoration: underline;
 
 }
-
-
 
 .support-section {
 
@@ -1858,8 +1902,6 @@ section {
 
 }
 
-
-
 .impact-section {
 
   padding: 80px 0;
@@ -1933,8 +1975,6 @@ p:not(.section-label) {
   font-size: 1rem;
 
 }
-
-
 
 .events-section {
 
@@ -2032,8 +2072,6 @@ p:not(.section-label) {
 
 }
 
-
-
 .site-footer {
 
   padding: 55px 0 25px;
@@ -2130,8 +2168,6 @@ p:not(.section-label) {
 
 }
 
-
-
 @media (max-width: 991.98px) {
 
   .hero-section {
@@ -2216,98 +2252,198 @@ p:not(.section-label) {
 
 }
 
-
 /* Homepage accents */
+
 .hero-actions .primary-btn {
+
   background: #f5b76b;
+
   border: 1px solid #f5b76b;
+
   color: #263629;
+
   font-weight: 700;
+
   border-radius: 999px;
+
   box-shadow: 0 8px 24px rgba(0,0,0,.15);
+
 }
+
 .hero-actions .primary-btn:hover { background: #ffd094; border-color: #ffd094; color: #263629; }
+
 .hero-actions .secondary-btn {
+
   background: rgba(255,255,255,.16);
+
   border: 1px solid rgba(255,255,255,.85);
+
   color: #fff;
+
   border-radius: 999px;
+
   backdrop-filter: blur(8px);
+
 }
+
 .hero-actions .secondary-btn:hover { background: #fff; color: #294e2c; }
+
 .support-section { background: #faf6f0; }
+
 .action-card { border-color: #eee8e1; box-shadow: 0 5px 22px rgba(51,47,36,.045); }
+
 .action-card:nth-child(1) { border-top: 4px solid #dc8776; }
+
 .action-card .card-link { color: #a84740; }
+
 .support-section .col-md-4:nth-child(2) .action-card { border-top-color: #e6b45d; }
+
 .support-section .col-md-4:nth-child(2) .card-link { color: #95600d; }
+
 .support-section .col-md-4:nth-child(3) .action-card { border-top-color: #77a8b8; }
+
 .support-section .col-md-4:nth-child(3) .card-link { color: #276e88; }
+
 .events-section { background: #fcfaf7; }
+
 .event-card {
+
   display: flex;
+
   flex-direction: column;
+
   padding: 0;
+
   overflow: hidden;
+
   border: 1px solid #e8e5df;
+
   border-radius: 18px;
+
   background: white;
+
   box-shadow: 0 12px 32px rgba(39,52,44,.07);
+
   transition: transform .2s ease, box-shadow .2s ease;
+
 }
+
 .event-card:hover { transform: translateY(-5px); box-shadow: 0 18px 40px rgba(39,52,44,.12); }
+
 .event-photo { display: block; width: 100%; height: 210px; object-fit: cover; background: #e7e9e0; }
+
 .event-details { padding: 24px; flex: 1; }
+
 .event-meta { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+
 .event-date {
+
   display: flex;
+
   flex-direction: column;
+
   justify-content: center;
+
   min-width: 57px;
+
   min-height: 59px;
+
   padding: 5px;
+
   border-radius: 9px;
+
   letter-spacing: .07em;
+
   background: #f9e9e6;
+
   color: #a74c43;
+
 }
+
 .event-date strong { color: inherit; font-size: 1.75rem; }
+
 .event-type { margin: 0; color: #9b5149; font-size: .7rem; line-height: 1.4; }
+
 .event-card--amber .event-date { background: #fff0d5; color: #915b15; }
+
 .event-card--amber .event-type { color: #95600d; }
+
 .event-card--blue .event-date { background: #e5f0f5; color: #316d86; }
+
 .event-card--blue .event-type { color: #316d86; }
+
 .event-card h3 { color: #273c35; font-size: 1.22rem; line-height: 1.3; }
+
 .event-card .event-details > p { color: #64716b; line-height: 1.65; }
+
 @media (prefers-reduced-motion: reduce) { .event-card { transition: none; } }
 
-
 /* Event links */
+
 .event-action {
+
   display: inline-flex;
+
   align-items: center;
+
   gap: .5rem;
+
   align-self: flex-start;
+
   margin-top: auto;
+
   padding: .4rem 0;
+
   color: #8c423d;
+
   font-weight: 700;
+
   text-decoration: underline;
+
   text-underline-offset: 4px;
+
 }
+
 .event-card--amber .event-action { color: #81520e; }
+
 .event-card--blue .event-action { color: #245f79; }
+
 .event-action:hover { color: #243d32; }
+
 .event-action:focus-visible, .card-link:focus-visible {
+
   outline: 3px solid #243d32;
+
   outline-offset: 4px;
+
   border-radius: 3px;
+
 }
+
 .event-status { font-size: .85rem; font-weight: 600; color: #696969 !important; }
+
 .action-card .card-link:disabled { color: #667368; cursor: not-allowed; text-decoration: none; opacity: .85; }
+
 @media (max-width: 575.98px) {
+
   .event-photo { height: 190px; }
+
   .event-details { padding: 20px; }
+
 }
+
+
+/* Official urban forest layer legend */
+.map-layer-key {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.map-layer-key--trees { color: #176c37; background: #25a652; }
+.map-layer-key--schedule { color: #9c520b; background: #f4a340; }
 
 </style>

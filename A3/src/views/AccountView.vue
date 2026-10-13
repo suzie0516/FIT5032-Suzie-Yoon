@@ -6,17 +6,17 @@ import { currentUser, logout } from '../utils/auth'
 
 const router = useRouter()
 
-const accountType = computed(() => {
-  if (currentUser.value?.role === 'admin') {
-    return 'Administrator'
+const accountType = computed(() =>
+  currentUser.value?.role === 'admin' ? 'Administrator' : 'Member'
+)
+
+const handleLogout = async () => {
+  try {
+    await logout()
+    await router.push('/')
+  } catch (error) {
+    console.error('Sign out failed:', error)
   }
-
-  return 'Member'
-})
-
-const handleLogout = () => {
-  logout()
-  router.push('/')
 }
 </script>
 
@@ -29,19 +29,16 @@ const handleLogout = () => {
         <section class="account-heading">
           <p class="section-label">ACCOUNT</p>
           <h1>My Account</h1>
-          <p>
-            View your Pots & Plants Melbourne account information.
-          </p>
+          <p>View your Pots & Plants Melbourne account information.</p>
         </section>
 
         <section v-if="currentUser" class="account-card">
           <div class="account-header">
             <div class="avatar">
-              {{ currentUser.fullName?.charAt(0).toUpperCase() }}
+              {{ currentUser.fullName?.charAt(0).toUpperCase() || 'U' }}
             </div>
-
             <div>
-              <h2>{{ currentUser.fullName }}</h2>
+              <h2>{{ currentUser.fullName || 'User' }}</h2>
               <p class="member-label">{{ accountType }}</p>
             </div>
           </div>
@@ -51,36 +48,29 @@ const handleLogout = () => {
           <div class="account-details">
             <div class="detail-row">
               <div class="detail-label">Full Name</div>
-              <div class="detail-value">
-                {{ currentUser.fullName }}
-              </div>
+              <div class="detail-value">{{ currentUser.fullName }}</div>
             </div>
-
             <div class="detail-row">
               <div class="detail-label">Email Address</div>
-              <div class="detail-value">
-                {{ currentUser.email }}
-              </div>
+              <div class="detail-value">{{ currentUser.email }}</div>
             </div>
-
             <div class="detail-row">
               <div class="detail-label">Account Type</div>
-              <div class="detail-value">
-                {{ accountType }}
-              </div>
+              <div class="detail-value">{{ accountType }}</div>
             </div>
           </div>
 
           <div class="account-actions">
-            <RouterLink to="/" class="btn back-btn">
-              Back to Home
-            </RouterLink>
-
-            <button
-              type="button"
-              class="btn signout-btn"
-              @click="handleLogout"
+            <RouterLink to="/" class="btn back-btn">Back to Home</RouterLink>
+            <RouterLink to="/email" class="btn back-btn">Send Email</RouterLink>
+            <RouterLink
+              v-if="currentUser.role === 'admin'"
+              to="/admin"
+              class="btn back-btn"
             >
+              Admin Dashboard
+            </RouterLink>
+            <button type="button" class="btn signout-btn" @click="handleLogout">
               Sign Out
             </button>
           </div>
@@ -88,14 +78,8 @@ const handleLogout = () => {
 
         <section v-else class="account-card text-center">
           <h2>Sign in required</h2>
-
-          <p>
-            Please sign in to view your account information.
-          </p>
-
-          <RouterLink to="/login" class="btn signout-btn">
-            Sign In
-          </RouterLink>
+          <p>Please sign in to view your account information.</p>
+          <RouterLink to="/login" class="btn signout-btn">Sign In</RouterLink>
         </section>
       </div>
     </main>
@@ -198,23 +182,14 @@ const handleLogout = () => {
   border-bottom: 1px solid #edf1eb;
 }
 
-.detail-row:last-child {
-  border-bottom: none;
-}
-
-.detail-label {
-  color: #667267;
-  font-weight: 600;
-}
-
-.detail-value {
-  color: #263b2c;
-  overflow-wrap: anywhere;
-}
+.detail-row:last-child { border-bottom: none; }
+.detail-label { color: #667267; font-weight: 600; }
+.detail-value { color: #263b2c; overflow-wrap: anywhere; }
 
 .account-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 32px;
 }
@@ -248,33 +223,12 @@ const handleLogout = () => {
 }
 
 @media (max-width: 576px) {
-  .account-page {
-    padding: 45px 0 70px;
-  }
-
-  .account-heading h1 {
-    font-size: 2rem;
-  }
-
-  .account-card {
-    padding: 24px;
-  }
-
-  .account-header {
-    align-items: flex-start;
-  }
-
-  .detail-row {
-    grid-template-columns: 1fr;
-    gap: 5px;
-  }
-
-  .account-actions {
-    flex-direction: column;
-  }
-
-  .account-actions .btn {
-    width: 100%;
-  }
+  .account-page { padding: 45px 0 70px; }
+  .account-heading h1 { font-size: 2rem; }
+  .account-card { padding: 24px; }
+  .account-header { align-items: flex-start; }
+  .detail-row { grid-template-columns: 1fr; gap: 5px; }
+  .account-actions { flex-direction: column; }
+  .account-actions .btn { width: 100%; }
 }
 </style>
