@@ -18,6 +18,7 @@ const options = {
   cors: true,
 }
 
+// Count plant and project records
 export const countRecords = onRequest(options, async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Use GET' })
@@ -39,6 +40,7 @@ export const countRecords = onRequest(options, async (req, res) => {
   }
 })
 
+// Email with optional PDF or CSV attachment
 export const sendEmail = onRequest(
   { ...options, secrets: [gmailUser, gmailPassword] },
   async (req, res) => {
@@ -166,4 +168,56 @@ export const sendEmail = onRequest(
     }
   }
 )
+
+// Existing administrator function
 export { adminOverview } from './adminOverview.js'
+
+// Public REST API: plant records
+export const getPlants = onRequest(options, async (req, res) => {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Use GET' })
+  }
+
+  try {
+    const snapshot = await db.collection('plants').limit(50).get()
+
+    const plants = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      name: doc.get('name') || '',
+      commonName: doc.get('commonName') || '',
+      category: doc.get('category') || '',
+      region: doc.get('region') || '',
+      description: doc.get('description') || '',
+    }))
+
+    return res.json({ plants })
+  } catch (error) {
+    console.error(error)
+    return res.status(500).json({ error: 'Unable to load plants' })
+  }
+})
+
+// Public REST API: greening projects
+export const getProjects = onRequest(options, async (req, res) => {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Use GET' })
+  }
+
+  try {
+    const snapshot = await db.collection('projects').limit(50).get()
+
+    const projects = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      name: doc.get('name') || '',
+      suburb: doc.get('suburb') || '',
+      status: doc.get('status') || '',
+      targetTrees: doc.get('targetTrees') ?? 0,
+      description: doc.get('description') || '',
+    }))
+
+    return res.json({ projects })
+  } catch (error) {
+    console.error(error)
+    return res.status(500).json({ error: 'Unable to load projects' })
+  }
+})
