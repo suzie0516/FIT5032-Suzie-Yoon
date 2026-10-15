@@ -1557,7 +1557,7 @@ onMounted(() => {
 
 
 
-  color: #4f7c43;
+  color: #315c39;
 
 
 
@@ -1615,7 +1615,7 @@ onMounted(() => {
 
 
 
-  color: #647068;
+  color: #435449;
 
 
 
@@ -1849,7 +1849,7 @@ onMounted(() => {
 
 
 
-  color: #667269;
+  color: #435449;
 
 
 
@@ -1997,7 +1997,7 @@ onMounted(() => {
 
 
 
-  color: #6a756c;
+  color: #435449;
 
 }
 
@@ -2077,7 +2077,7 @@ onMounted(() => {
 
 
 
-  color: #737d75;
+  color: #435449;
 
 }
 
@@ -2353,7 +2353,7 @@ onMounted(() => {
 
 
 
-  color: #737d75;
+  color: #435449;
 
 
 
@@ -2437,7 +2437,7 @@ onMounted(() => {
 
 .star-button:focus {
 
-  outline: none;
+  outline: 2px solid #315c39;
 
 
 
@@ -2501,7 +2501,7 @@ onMounted(() => {
 
 
 
-  background-color: #4f7c43;
+  background-color: #315c39;
 
 
 
@@ -2589,7 +2589,7 @@ onMounted(() => {
 
 
 
-  color: #5f6b61;
+  color: #435449;
 
 }
 
@@ -2665,7 +2665,7 @@ onMounted(() => {
 
 
 
-  color: #4f7c43;
+  color: #315c39;
 
 
 
@@ -2699,7 +2699,7 @@ onMounted(() => {
 
 
 
-  background-color: #4f7c43;
+  background-color: #315c39;
 
 }
 
