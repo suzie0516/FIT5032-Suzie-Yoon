@@ -221,3 +221,4 @@ export const getProjects = onRequest(options, async (req, res) => {
     return res.status(500).json({ error: 'Unable to load projects' })
   }
 })
+export { sendBulkEmail } from './bulkEmail.js'

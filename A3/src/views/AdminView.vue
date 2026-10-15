@@ -56,6 +56,89 @@ const loadUsers = async () => {
   }
 }
 
+// Select recipients explicitly before sending any email.
+const selectedRecipientIds = ref([])
+const bulkSubject = ref('')
+const bulkMessage = ref('')
+const bulkConfirmed = ref(false)
+const bulkSending = ref(false)
+const bulkError = ref('')
+const bulkSuccess = ref('')
+
+const sendBulkEmail = async () => {
+  bulkError.value = ''
+  bulkSuccess.value = ''
+
+  if (!selectedRecipientIds.value.length || selectedRecipientIds.value.length > 5) {
+    bulkError.value = 'Select between 1 and 5 recipients.'
+    return
+  }
+
+  if (bulkSubject.value.trim().length < 3 || bulkSubject.value.length > 120 ||
+      !bulkMessage.value.trim() || bulkMessage.value.length > 2000) {
+    bulkError.value = 'Enter a subject (3–120 characters) and message (1–2000 characters).'
+    return
+  }
+
+  if (!bulkConfirmed.value) {
+    bulkError.value = 'Confirm that these recipients agreed to receive this email.'
+    return
+  }
+
+  const chosenUsers = users.value.filter((user) =>
+    selectedRecipientIds.value.includes(user.id)
+  )
+  if (chosenUsers.length !== selectedRecipientIds.value.length ||
+      chosenUsers.some((user) => !user.email || user.role === 'admin')) {
+    bulkError.value = 'Refresh the user list and select eligible member accounts.'
+    return
+  }
+
+  const recipientList = chosenUsers.map((user) => user.email).join('\n')
+  if (!window.confirm(`Send this email to ${chosenUsers.length} selected member(s)?\n\n${recipientList}`)) {
+    return
+  }
+
+  bulkSending.value = true
+  try {
+    const baseUrl = import.meta.env.VITE_FUNCTIONS_BASE_URL
+    if (!baseUrl || !auth.currentUser) throw new Error('Sign in as an administrator.')
+
+    const token = await auth.currentUser.getIdToken(true)
+    const response = await fetch(`${baseUrl}/sendBulkEmail`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        recipientUids: [...selectedRecipientIds.value],
+        subject: bulkSubject.value.trim(),
+        message: bulkMessage.value.trim(),
+        confirmation: 'SEND',
+      }),
+    })
+
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || 'Bulk email request failed.')
+
+    const failed = Array.isArray(result.failed) ? result.failed : []
+    bulkSuccess.value = `${result.sent || 0} email(s) sent.` +
+      (failed.length ? ` Failed: ${failed.join(', ')}` : '')
+    if (failed.length === 0) {
+      selectedRecipientIds.value = []
+      bulkSubject.value = ''
+      bulkMessage.value = ''
+      bulkConfirmed.value = false
+    }
+  } catch (err) {
+    console.error(err)
+    bulkError.value = err.message || 'Unable to send bulk email.'
+  } finally {
+    bulkSending.value = false
+  }
+}
+
 const plantsCanvas = ref(null)
 const projectsCanvas = ref(null)
 const plantGroups = ref([])
@@ -220,8 +303,8 @@ onBeforeUnmount(() => {
               {{ chartsLoading ? 'Loading...' : 'Refresh Charts' }}
             </button>
           </div>
-          <p v-if="chartsError" class="alert alert-danger" role="alert">{{ chartsError }}</p>
-          <p v-if="chartsLoading" role="status">Refreshing chart data...</p>
+          <p v-if="chartsError" class="alert alert-danger"role="alert">{{ chartsError }}</p>
+          <p v-if="chartsLoading" role="status">Refreshingchart data...</p>
           <div class="charts-grid">
             <div class="chart-panel">
               <h3>Plant Categories</h3>
@@ -235,12 +318,12 @@ onBeforeUnmount(() => {
             </div>
             <div class="chart-panel">
               <h3>Project Status</h3>
-              <div class="chart-canvas"><canvas ref="projectsCanvas" role="img" aria-label="Bar chart showing project counts by status"></canvas></div>
+              <div class="chart-canvas"><canvas ref="projectsCanvas" role="img" aria-label="Bar chart showing projectcounts by status"></canvas></div>
               <p v-if="!projectGroups.length && !chartsLoading" class="empty-state">No project records available.</p>
               <table v-if="projectGroups.length" class="table table-sm mt-3">
                 <caption class="visually-hidden">Project statuses and counts</caption>
                 <thead><tr><th scope="col">Status</th><th scope="col">Count</th></tr></thead>
-                <tbody><tr v-for="item in projectGroups" :key="item.label"><td>{{ item.label }}</td><td>{{ item.count }}</td></tr></tbody>
+                <tbody><tr v-for="item in projectGroups" :key="item.label"><td>{{ item.label }}</td><td>{{ item.count}}</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -305,6 +388,52 @@ onBeforeUnmount(() => {
           <p v-else-if="!error" class="empty-state">
             No registered accounts are available.
           </p>
+        </section>
+
+        <section class="users-card" aria-labelledby="bulk-email-heading">
+          <div class="table-heading">
+            <div>
+              <p class="section-label">STAFF COMMUNICATION</p>
+              <h2 id="bulk-email-heading">Bulk Email</h2>
+              <p>Choose up to five members. No email is sent until you confirm.</p>
+            </div>
+          </div>
+
+          <p v-if="bulkError" class="alert alert-danger" role="alert">{{ bulkError }}</p>
+          <p v-if="bulkSuccess" class="alert alert-success" role="status">{{ bulkSuccess }}</p>
+
+          <form class="bulk-form" @submit.prevent="sendBulkEmail">
+            <fieldset class="bulk-recipient-list" :disabled="bulkSending || loading">
+              <legend class="fw-semibold fs-6">Select recipients ({{ selectedRecipientIds.length }}/5)</legend>
+              <p v-if="!users.some((user) => user.role !== 'admin' && user.email)" class="text-muted">
+                No eligible member accounts loaded.
+              </p>
+              <label v-for="user in users.filter((item) => item.role !== 'admin' && item.email)"
+                     :key="user.id" class="bulk-recipient">
+                <input v-model="selectedRecipientIds" type="checkbox" :value="user.id"
+                       :disabled="!selectedRecipientIds.includes(user.id) && selectedRecipientIds.length >= 5" />
+                <span>{{ user.fullName }} — {{ user.email }}</span>
+              </label>
+            </fieldset>
+
+            <label class="form-label fw-semibold" for="bulk-subject">Subject</label>
+            <input id="bulk-subject" v-model="bulkSubject" class="form-control" type="text"
+                   minlength="3" maxlength="120" required :disabled="bulkSending" />
+
+            <label class="form-label fw-semibold mt-3" for="bulk-message">Message</label>
+            <textarea id="bulk-message" v-model="bulkMessage" class="form-control" rows="5"
+                      maxlength="2000" required :disabled="bulkSending"></textarea>
+
+            <label class="bulk-confirm mt-3">
+              <input v-model="bulkConfirmed" type="checkbox" :disabled="bulkSending" />
+              <span>I confirm the selected members agreed to receive this test or community email.</span>
+            </label>
+
+            <button class="btn btn-success mt-3" type="submit"
+                    :disabled="bulkSending || loading || !selectedRecipientIds.length || !bulkConfirmed">
+              {{ bulkSending ? 'Sending...' : `Send to ${selectedRecipientIds.length} selected member(s)` }}
+            </button>
+          </form>
         </section>
 
         <section class="security-note">
@@ -745,4 +874,10 @@ onBeforeUnmount(() => {
 @media (max-width: 767.98px) {
   .charts-grid { grid-template-columns: 1fr; }
 }
+
+.bulk-form { max-width: 740px; }
+.bulk-recipient-list { border: 1px solid #dfe8dc; border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+.bulk-recipient { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; cursor: pointer; overflow-wrap: anywhere; }
+.bulk-recipient input, .bulk-confirm input { margin-top: 5px; flex-shrink: 0; }
+.bulk-confirm { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
 </style>
