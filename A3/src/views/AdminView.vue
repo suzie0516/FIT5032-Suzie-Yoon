@@ -1,5 +1,6 @@
 ﻿<script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import Chart from 'chart.js/auto'
 import { useRouter } from 'vue-router'
 import AppNavbar from '../components/AppNavbar.vue'
 import { auth } from '../firebase'
@@ -55,7 +56,113 @@ const loadUsers = async () => {
   }
 }
 
-onMounted(loadUsers)
+const plantsCanvas = ref(null)
+const projectsCanvas = ref(null)
+const plantGroups = ref([])
+const projectGroups = ref([])
+const chartsLoading = ref(false)
+const chartsError = ref('')
+let plantChart = null
+let projectChart = null
+
+const groupCounts = (records, field) => {
+  const counts = new Map()
+  for (const record of records) {
+    const raw = record?.[field]
+    const label = typeof raw === 'string' && raw.trim() ? raw.trim() : 'Unspecified'
+    counts.set(label, (counts.get(label) || 0) + 1)
+  }
+  return [...counts.entries()].map(([label, count]) => ({ label, count }))
+}
+
+const renderCharts = async () => {
+  await nextTick()
+  plantChart?.destroy()
+  projectChart?.destroy()
+  plantChart = null
+  projectChart = null
+
+  if (plantsCanvas.value && plantGroups.value.length) {
+    plantChart = new Chart(plantsCanvas.value, {
+      type: 'doughnut',
+      data: {
+        labels: plantGroups.value.map((item) => item.label),
+        datasets: [{
+          label: 'Plants',
+          data: plantGroups.value.map((item) => item.count),
+          backgroundColor: ['#2c7442', '#7cb57c', '#e3b25f', '#81aab3', '#b38bb8'],
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+      },
+    })
+  }
+
+  if (projectsCanvas.value && projectGroups.value.length) {
+    projectChart = new Chart(projectsCanvas.value, {
+      type: 'bar',
+      data: {
+        labels: projectGroups.value.map((item) => item.label),
+        datasets: [{
+          label: 'Projects',
+          data: projectGroups.value.map((item) => item.count),
+          backgroundColor: '#4f7c43',
+          borderRadius: 5,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    })
+  }
+}
+
+const loadCharts = async () => {
+  chartsLoading.value = true
+  chartsError.value = ''
+  try {
+    const baseUrl = import.meta.env.VITE_FUNCTIONS_BASE_URL
+    if (!baseUrl) throw new Error('Firebase Functions URL is missing.')
+
+    const [plantResponse, projectResponse] = await Promise.all([
+      fetch(`${baseUrl}/getPlants`),
+      fetch(`${baseUrl}/getProjects`),
+    ])
+    if (!plantResponse.ok || !projectResponse.ok) {
+      throw new Error('Unable to load Firestore chart data.')
+    }
+    const [plantData, projectData] = await Promise.all([
+      plantResponse.json(),
+      projectResponse.json(),
+    ])
+    if (!Array.isArray(plantData.plants) || !Array.isArray(projectData.projects)) {
+      throw new Error('Unexpected REST API response.')
+    }
+    plantGroups.value = groupCounts(plantData.plants, 'category')
+    projectGroups.value = groupCounts(projectData.projects, 'status')
+    await renderCharts()
+  } catch (err) {
+    console.error(err)
+    chartsError.value = err.message || 'Unable to load charts.'
+  } finally {
+    chartsLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadUsers()
+  loadCharts()
+})
+
+onBeforeUnmount(() => {
+  plantChart?.destroy()
+  projectChart?.destroy()
+})
 </script>
 
 <template>
@@ -101,6 +208,44 @@ onMounted(loadUsers)
           </article>
         </section>
 
+
+        <section class="users-card" aria-labelledby="charts-heading">
+          <div class="table-heading">
+            <div>
+              <p class="section-label">FIRESTORE INSIGHTS</p>
+              <h2 id="charts-heading">Interactive Data Charts</h2>
+              <p>Live records from the public Plants and Projects REST APIs (first 50 records each).</p>
+            </div>
+            <button type="button" class="btn account-btn" :disabled="chartsLoading" @click="loadCharts">
+              {{ chartsLoading ? 'Loading...' : 'Refresh Charts' }}
+            </button>
+          </div>
+          <p v-if="chartsError" class="alert alert-danger" role="alert">{{ chartsError }}</p>
+          <p v-if="chartsLoading" role="status">Refreshing chart data...</p>
+          <div class="charts-grid">
+            <div class="chart-panel">
+              <h3>Plant Categories</h3>
+              <div class="chart-canvas"><canvas ref="plantsCanvas" role="img" aria-label="Doughnut chart showing plant counts by category"></canvas></div>
+              <p v-if="!plantGroups.length && !chartsLoading" class="empty-state">No plant records available.</p>
+              <table v-if="plantGroups.length" class="table table-sm mt-3">
+                <caption class="visually-hidden">Plant categories and counts</caption>
+                <thead><tr><th scope="col">Category</th><th scope="col">Count</th></tr></thead>
+                <tbody><tr v-for="item in plantGroups" :key="item.label"><td>{{ item.label }}</td><td>{{ item.count }}</td></tr></tbody>
+              </table>
+            </div>
+            <div class="chart-panel">
+              <h3>Project Status</h3>
+              <div class="chart-canvas"><canvas ref="projectsCanvas" role="img" aria-label="Bar chart showing project counts by status"></canvas></div>
+              <p v-if="!projectGroups.length && !chartsLoading" class="empty-state">No project records available.</p>
+              <table v-if="projectGroups.length" class="table table-sm mt-3">
+                <caption class="visually-hidden">Project statuses and counts</caption>
+                <thead><tr><th scope="col">Status</th><th scope="col">Count</th></tr></thead>
+                <tbody><tr v-for="item in projectGroups" :key="item.label"><td>{{ item.label }}</td><td>{{ item.count }}</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section class="users-card">
           <div class="table-heading">
             <div>
@@ -128,7 +273,7 @@ onMounted(loadUsers)
             </div>
           </div>
 
-          <p v-if="loading" role="status">Loading Firebase accounts...</p>
+          <p v-if="loading" role="status">Loading Firebaseaccounts...</p>
 
           <div v-else-if="users.length" class="table-responsive">
             <table class="table align-middle">
@@ -165,7 +310,7 @@ onMounted(loadUsers)
         <section class="security-note">
           <h2>Restricted Area</h2>
           <p>
-            Account information is retrieved from Firebase Authentication.
+            Account information is retrieved from FirebaseAuthentication.
             Access is verified by a protected Cloud Function.
           </p>
         </section>
@@ -574,5 +719,30 @@ onMounted(loadUsers)
   .account-btn {
     width: 100%;
   }
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.chart-panel {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #dfe8dc;
+  border-radius: 12px;
+}
+.chart-panel h3 {
+  color: #263d2c;
+  font-size: 1.1rem;
+  margin-bottom: 14px;
+}
+.chart-canvas {
+  position: relative;
+  height: 260px;
+  width: 100%;
+}
+@media (max-width: 767.98px) {
+  .charts-grid { grid-template-columns: 1fr; }
 }
 </style>
