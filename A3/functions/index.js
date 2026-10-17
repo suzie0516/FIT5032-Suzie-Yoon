@@ -222,3 +222,4 @@ export const getProjects = onRequest(options, async (req, res) => {
   }
 })
 export { sendBulkEmail } from './bulkEmail.js'
+export { designRatings } from './designRatings.js'

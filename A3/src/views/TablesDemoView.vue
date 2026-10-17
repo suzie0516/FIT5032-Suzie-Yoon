@@ -58,33 +58,30 @@ const projectRows = [
     <header class="mb-5">
       <p class="eyebrow">EXPLORE OUR DATA</p>
       <h1>Plants &amp; Greening Projects</h1>
-      <p class="text-secondary">
-        Try sorting, searching individual columns, changing pages and exporting results.
-      </p>
-      <p class="small text-secondary">Demo data only — these are not verified project records.</p>
+      <p class="text-secondary">Explore native planting options and ideas for greener Melbourne neighbourhoods.</p>
     </header>
 
     <section class="mb-5" aria-labelledby="plants-heading">
       <h2 id="plants-heading">Native plants</h2>
       <DataTable
-        table-id="demo-plants"
+        table-id="plants-overview"
         caption="Plant comparison table"
         :columns="plantColumns"
         :rows="plantRows"
         item-label="plants"
-        export-file-name="demo-plants"
+        export-file-name="melbourne-plant-guide"
       />
     </section>
 
     <section aria-labelledby="projects-heading">
-      <h2 id="projects-heading">Greening projects</h2>
+      <h2 id="projects-heading">Greening project ideas</h2>
       <DataTable
-        table-id="demo-projects"
-        caption="Greening projects table — sample records"
+        table-id="greening-projects"
+        caption="Illustrative local greening proposals"
         :columns="projectColumns"
         :rows="projectRows"
         item-label="projects"
-        export-file-name="demo-projects"
+        export-file-name="greening-project-ideas"
       />
     </section>
   </main>

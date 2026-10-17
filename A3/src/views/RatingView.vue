@@ -1,1487 +1,267 @@
 <script setup>
-
+import spiralGardenImage from '../assets/challenge/spiral-garden.png'
+import geometricPondImage from '../assets/challenge/geometric-pond.png'
+import wildflowerGardenImage from '../assets/challenge/wildflower-garden.png'
+import communityGardenImage from '../assets/challenge/community-garden.png'
 import { computed, onMounted, ref } from 'vue'
-
 import { useRouter } from 'vue-router'
-
-
-
 import AppNavbar from '../components/AppNavbar.vue'
-
-import {
-
-  currentUser,
-
-  isAuthenticated,
-
-} from '../utils/auth'
-
-
-
-
+import { auth } from '../firebase'
+import { isAuthenticated } from '../utils/auth'
 
 const router = useRouter()
+const baseUrl = import.meta.env.VITE_FUNCTIONS_BASE_URL
 
+// Concept designs for an illustrative community challenge.
+const designs = [
+  {
+    id: 'spiral-garden-1',
+    name: 'Spiral Garden',
+    category: 'Pollinator planting',
+    description: 'A winding native-plant garden with paths for local residents.',
+    image: spiralGardenImage,
+    photoAlt: 'Green garden plants shown as an illustrative concept image',
+  },
+  {
+    id: 'octagon-pond-2',
+    name: 'Octagon Pond',
+    category: 'Rainwater and habitat',
+    description: 'A small rain garden and pond concept supporting urban biodiversity.',
+    image: geometricPondImage,
+    photoAlt: 'Green woodland shown as an illustrative environment image',
+  },
+  {
+    id: 'native-bee-walk-3',
+    name: 'Native Bee Walk',
+    category: 'Pollinator corridor',
+    description: 'A walking route with native flowering plants for local pollinators.',
+    image: wildflowerGardenImage,
+    photoAlt: 'Lush planting shown as an illustrative garden image',
+  },
+  {
+    id: 'rainwater-pocket-park-4',
+    name: 'Rainwater Pocket Park',
+    category: 'Urban green space',
+    description: 'A neighbourhood pocket park using water-sensitive landscaping.',
+    image: communityGardenImage,
+    photoAlt: 'Leafy green plants shown as an illustrative planting image',
+  },
+]
 
-
-const DESIGN_ID = 'spiral-garden-1'
-
-const STORAGE_KEY = 'designRatings'
-
-
-
-
-
-// --------------------------------
-
-// User rating
-
-// --------------------------------
-
+const index = ref(0)
+const activeDesign = computed(() => designs[index.value])
+const results = ref({})
+const myRatings = ref({})
 const designRating = ref(0)
-
 const applicabilityRating = ref(0)
-
 const creativityRating = ref(0)
-
-
-
-const hoverDesign = ref(0)
-
-const hoverApplicability = ref(0)
-
-const hoverCreativity = ref(0)
-
-
-
-const ratings = ref([])
-
-
-
+const loading = ref(false)
+const saving = ref(false)
+const errorMessage = ref('')
 const successMessage = ref('')
 
-const errorMessage = ref('')
-
-
-
-
-
-// --------------------------------
-
-// Load ratings
-
-// --------------------------------
-
-const loadRatings = () => {
-
-  try {
-
-    const storedRatings =
-
-      JSON.parse(
-
-        localStorage.getItem(STORAGE_KEY),
-
-      )
-
-
-
-    ratings.value =
-
-      Array.isArray(storedRatings)
-
-        ? storedRatings
-
-        : []
-
-  } catch {
-
-    ratings.value = []
-
-  }
-
-}
-
-
-
-
-
-// --------------------------------
-
-// Ratings for this design
-
-// --------------------------------
-
-const designRatings = computed(() => {
-
-  return ratings.value.filter(
-
-    (rating) =>
-
-      rating.designId === DESIGN_ID,
-
-  )
-
+const score = computed(() => results.value[activeDesign.value.id] || {
+  count: 0, design: 0, applicability: 0, creativity: 0, overall: 0,
 })
-
-
-
-
-
-// --------------------------------
-
-// Number of ratings
-
-// --------------------------------
-
-const ratingCount = computed(() => {
-
-  return designRatings.value.length
-
-})
-
-
-
-
-
-// --------------------------------
-
-// Average category ratings
-
-// --------------------------------
-
-function calculateAverage(items, category) {
-  const validRatings = items
-    .map(rating => rating?.[category])
-    .filter(value =>
-      value !== null &&
-      value !== undefined &&
-      typeof value !== 'boolean' &&
-      !(typeof value === 'string' && value.trim() === '')
-    )
-    .map(value => Number(value))
-    .filter(value => Number.isFinite(value) && value >= 1 && value <= 5)
-
-  if (validRatings.length === 0) return 0
-  return validRatings.reduce((sum, value) => sum + value, 0) / validRatings.length
-}
-
-const averageDesign = computed(() => calculateAverage(designRatings.value, 'design'))
-const averageApplicability = computed(() => calculateAverage(designRatings.value, 'applicability'))
-const averageCreativity = computed(() => calculateAverage(designRatings.value, 'creativity'))
-
-// --------------------------------
-// Overall public rating
-// --------------------------------
-const publicRating = computed(() => {
-
-  if (ratingCount.value === 0) {
-
-    return 0
-
-  }
-
-
-
-  return (
-
-    averageDesign.value +
-
-    averageApplicability.value +
-
-    averageCreativity.value
-
-  ) / 3
-
-})
-
-
-
-
-
-const formattedPublicRating = computed(() => {
-
-  return publicRating.value.toFixed(1)
-
-})
-
-
-
-
-
-// --------------------------------
-
-// Display stars for public average
-
-// --------------------------------
-
-const publicStarFilled = (star) => {
-
-  return publicRating.value >=
-
-    star - 0.5
-
-}
-
-
-
-
-
-// --------------------------------
-
-// Load existing rating for user
-
-// --------------------------------
-
-const loadCurrentUserRating = () => {
-
-  if (!currentUser.value) {
-
-    return
-
-  }
-
-
-
-  const existingRating =
-
-    ratings.value.find(
-
-      (rating) =>
-
-        rating.designId === DESIGN_ID &&
-
-        rating.userId ===
-
-          currentUser.value.id,
-
-    )
-
-
-
-  if (!existingRating) {
-
-    return
-
-  }
-
-
-
-  designRating.value =
-
-    existingRating.design
-
-
-
-  applicabilityRating.value =
-
-    existingRating.applicability
-
-
-
-  creativityRating.value =
-
-    existingRating.creativity
-
-}
-
-
-
-
-
-// --------------------------------
-
-// Validation
-
-// --------------------------------
-
-const ratingComplete = computed(() => {
-
-  return (
-
-    designRating.value >= 1 &&
-
-    designRating.value <= 5 &&
-
-    applicabilityRating.value >= 1 &&
-
-    applicabilityRating.value <= 5 &&
-
-    creativityRating.value >= 1 &&
-
-    creativityRating.value <= 5
-
-  )
-
-})
-
-
-
-
-
-// --------------------------------
-
-// Submit rating
-
-// --------------------------------
-
-const submitRating = () => {
-
-  successMessage.value = ''
-
+const existingRating = computed(() => !!myRatings.value[activeDesign.value.id])
+const ratingComplete = computed(() =>
+  [designRating.value, applicabilityRating.value, creativityRating.value]
+    .every((value) => Number.isInteger(value) && value >= 1 && value <= 5)
+)
+
+function selectDesign(newIndex) {
+  index.value = (newIndex + designs.length) % designs.length
+  const mine = myRatings.value[activeDesign.value.id]
+  designRating.value = mine?.design || 0
+  applicabilityRating.value = mine?.applicability || 0
+  creativityRating.value = mine?.creativity || 0
   errorMessage.value = ''
+  successMessage.value = ''
+}
 
-
-
-  if (!isAuthenticated.value) {
-
-    errorMessage.value =
-
-      'Please sign in before submitting a rating.'
-
-
-
-    return
-
+async function loadRatings() {
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    if (!baseUrl) throw new Error('Firebase Functions URL is missing.')
+    await auth.authStateReady()
+    const headers = {}
+    if (auth.currentUser) {
+      headers.Authorization = `Bearer ${await auth.currentUser.getIdToken()}`
+    }
+    const response = await fetch(`${baseUrl}/designRatings`, { headers })
+    if (!response.ok) throw new Error('Unable to load community ratings.')
+    const data = await response.json()
+    results.value = data.results || {}
+    myRatings.value = data.mine || {}
+    selectDesign(index.value)
+  } catch (error) {
+    console.error(error)
+    errorMessage.value = error.message || 'Unable to load ratings.'
+  } finally {
+    loading.value = false
   }
+}
 
-
-
+async function submitRating() {
+  errorMessage.value = ''
+  successMessage.value = ''
+  if (!auth.currentUser) {
+    errorMessage.value = 'Please sign in before rating.'
+    return
+  }
   if (!ratingComplete.value) {
-
-    errorMessage.value =
-
-      'Please rate Design, Applicability and Creativity before submitting.'
-
-
-
+    errorMessage.value = 'Please rate all three categories from 1 to 5.'
     return
-
   }
-
-
-
-  const ratingRecord = {
-
-    designId: DESIGN_ID,
-
-
-
-    userId:
-
-      currentUser.value.id,
-
-
-
-    userEmail:
-
-      currentUser.value.email,
-
-
-
-    design:
-
-      designRating.value,
-
-
-
-    applicability:
-
-      applicabilityRating.value,
-
-
-
-    creativity:
-
-      creativityRating.value,
-
-
-
-    updatedAt:
-
-      new Date().toISOString(),
-
+  saving.value = true
+  try {
+    const token = await auth.currentUser.getIdToken()
+    const response = await fetch(`${baseUrl}/designRatings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        designId: activeDesign.value.id,
+        design: designRating.value,
+        applicability: applicabilityRating.value,
+        creativity: creativityRating.value,
+      }),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Unable to save rating.')
+    await loadRatings()
+    successMessage.value = 'Your rating has been saved. Community averages are updated.'
+  } catch (error) {
+    console.error(error)
+    errorMessage.value = error.message || 'Unable to save rating.'
+  } finally {
+    saving.value = false
   }
-
-
-
-
-
-  const existingIndex =
-
-    ratings.value.findIndex(
-
-      (rating) =>
-
-        rating.designId === DESIGN_ID &&
-
-        rating.userId ===
-
-          currentUser.value.id,
-
-    )
-
-
-
-
-
-  if (existingIndex >= 0) {
-
-    ratings.value[existingIndex] =
-
-      ratingRecord
-
-
-
-    successMessage.value =
-
-      'Your rating has been updated successfully.'
-
-  } else {
-
-    ratings.value.push(
-
-      ratingRecord,
-
-    )
-
-
-
-    successMessage.value =
-
-      'Thank you. Your rating has been submitted successfully.'
-
-  }
-
-
-
-
-
-  localStorage.setItem(
-
-    STORAGE_KEY,
-
-    JSON.stringify(ratings.value),
-
-  )
-
 }
 
-
-
-
-
-// --------------------------------
-
-// Sign in
-
-// --------------------------------
-
-const goToLogin = () => {
-
-  router.push({
-
-    name: 'login',
-
-
-
-    query: {
-
-      redirect: '/design-challenge',
-
-    },
-
-  })
-
+function goToLogin() {
+  router.push({ name: 'login', query: { redirect: '/design-challenge' } })
 }
 
-
-
-
-
-// --------------------------------
-
-// Star helpers
-
-// --------------------------------
-
-const setDesignRating = (star) => {
-
-  designRating.value = star
-
-}
-
-
-
-
-
-const setApplicabilityRating = (star) => {
-
-  applicabilityRating.value = star
-
-}
-
-
-
-
-
-const setCreativityRating = (star) => {
-
-  creativityRating.value = star
-
-}
-
-
-
-
-
-// --------------------------------
-
-// Initial page load
-
-// --------------------------------
-
-onMounted(() => {
-
-  loadRatings()
-
-
-
-  loadCurrentUserRating()
-
-})
-
+onMounted(loadRatings)
 </script>
 
-
-
-
-
 <template>
-
   <div>
-
     <AppNavbar />
-
-
-
     <main class="rating-page">
-
-
-
-      <!-- =================================
-
-           PAGE HEADER
-
-      ================================== -->
-
       <section class="challenge-header">
-
         <div class="container">
-
-          <p class="eyebrow">
-
-            GREEN MELBOURNE DESIGN CHALLENGE
-
-          </p>
-
-
-
-          <h1>
-
-            Finalist Design 1:
-
-            Spiral Garden
-
-          </h1>
-
-
-
-          <p class="intro">
-
-            Explore the finalist concept and
-
-            contribute your community rating.
-
-          </p>
-
+          <p class="eyebrow">GREEN MELBOURNE DESIGN CHALLENGE</p>
+          <h1>Community Design Ratings</h1>
+          <p class="intro">Explore four illustrative urban greening concepts and share your rating.</p>
         </div>
-
       </section>
 
+      <div class="container design-content">
+        <nav class="design-selector" aria-label="Select a design">
+          <button
+            v-for="(item, i) in designs"
+            :key="item.id"
+            type="button"
+            class="design-tab"
+            :class="{ active: i === index }"
+            :aria-current="i === index ? 'true' : undefined"
+            @click="selectDesign(i)"
+          >{{ i + 1 }}. {{ item.name }}</button>
+        </nav>
 
-
-
-
-      <div class="container">
-
-
-
-        <!-- =================================
-
-             DESIGN IMAGES
-
-        ================================== -->
-
-        <section class="design-gallery">
-
-
-
-          <div class="design-image image-one">
-
-            <div class="image-overlay">
-
-              <span>
-
-                Spiral Garden
-
-              </span>
-
-            </div>
-
+        <section class="design-summary" aria-labelledby="design-name">
+          <div class="design-photo">
+            <img :src="activeDesign.image" :alt="activeDesign.photoAlt" loading="lazy" />
           </div>
-
-
-
-          <div class="design-image image-two">
-
-            <div class="image-overlay">
-
-              <span>
-
-                Native Planting Concept
-
-              </span>
-
-            </div>
-
+          <div class="design-details">
+            <p class="section-label">FINALIST CONCEPT {{ index + 1 }} OF {{ designs.length }}</p>
+            <h2 id="design-name">{{ activeDesign.name }}</h2>
+            <p class="design-category">{{ activeDesign.category }}</p>
+            <p>{{ activeDesign.description }}</p>
+            <p class="photo-note">Representative photography only — not an official design rendering or confirmed project.</p>
           </div>
-
-
-
         </section>
 
+        <p v-if="errorMessage" class="alert alert-danger" role="alert">{{ errorMessage }}</p>
+        <p v-if="successMessage" class="alert alert-success" role="status">{{ successMessage }}</p>
+        <p v-if="loading" role="status">Refreshing community ratings...</p>
 
-
-
-
-        <!-- =================================
-
-             CATEGORY TAGS
-
-        ================================== -->
-
-        <section class="category-row">
-
-          <span class="category-label">
-
-            Category
-
-          </span>
-
-
-
-          <span class="category-badge">
-
-            Pollinator
-
-          </span>
-
-
-
-          <span class="category-badge">
-
-            Tree Planting
-
-          </span>
-
-        </section>
-
-
-
-
-
-        <!-- =================================
-
-             PUBLIC RATING
-
-        ================================== -->
-
-        <section class="public-rating-card">
-
-
-
+        <section class="public-rating-card" aria-labelledby="public-heading">
           <div>
-
-            <p class="section-label">
-
-              COMMUNITY SCORE
-
-            </p>
-
-
-
-            <h2>
-
-              Public Rating
-
-            </h2>
-
-
-
-            <p class="rating-description">
-
-              Aggregated rating from community
-
-              members for this finalist design.
-
-            </p>
-
+            <p class="section-label">COMMUNITY SCORE</p>
+            <h2 id="public-heading">Public Rating</h2>
+            <p class="rating-description">Average of ratings submitted by signed-in community members for this design.</p>
+            <p class="rating-description">{{ score.count }} {{ score.count === 1 ? 'rating' : 'ratings' }} received.</p>
           </div>
-
-
-
-
-
           <div class="public-score">
-
-
-
-            <div
-
-              class="public-stars"
-
-              aria-label="Public rating"
-
-            >
-
-              <span
-
-                v-for="star in 5"
-
-                :key="star"
-
-                class="public-star"
-
-                :class="{
-
-                  filled:
-
-                    publicStarFilled(star),
-
-                }"
-
-              >
-
-                ★
-
-              </span>
-
+            <div class="score-line"><strong>{{ score.overall.toFixed(1) }} / 5</strong></div>
+            <div class="public-stars" :aria-label="`Community average ${score.overall.toFixed(1)} out of 5`">
+              <span v-for="star in 5" :key="star" class="public-star" :class="{ filled: score.overall >= star - 0.5 }" aria-hidden="true">★</span>
             </div>
-
-
-
-            <div class="score-line">
-
-              <strong>
-
-                {{ formattedPublicRating }} / 5
-
-              </strong>
-
-
-
-              <span>
-
-                ({{ ratingCount }}
-
-                {{
-
-                  ratingCount === 1
-
-                    ? 'rating'
-
-                    : 'ratings'
-
-                }})
-
-              </span>
-
-            </div>
-
-
-
           </div>
-
-
-
         </section>
 
-
-
-
-
-        <!-- =================================
-
-             CATEGORY AVERAGES
-
-        ================================== -->
-
-        <section
-
-          v-if="ratingCount > 0"
-
-          class="average-grid"
-
-        >
-
-          <article class="average-card">
-
-            <span>Design</span>
-
-
-
-            <strong>
-
-              {{ averageDesign.toFixed(1) }}
-
-            </strong>
-
-          </article>
-
-
-
-          <article class="average-card">
-
-            <span>Applicability</span>
-
-
-
-            <strong>
-
-              {{
-
-                averageApplicability.toFixed(1)
-
-              }}
-
-            </strong>
-
-          </article>
-
-
-
-          <article class="average-card">
-
-            <span>Creativity</span>
-
-
-
-            <strong>
-
-              {{
-
-                averageCreativity.toFixed(1)
-
-              }}
-
-            </strong>
-
-          </article>
-
+        <section v-if="score.count" class="average-grid" aria-label="Average category ratings">
+          <article class="average-card"><span>Design</span><strong>{{ score.design.toFixed(1) }}</strong></article>
+          <article class="average-card"><span>Applicability</span><strong>{{ score.applicability.toFixed(1) }}</strong></article>
+          <article class="average-card"><span>Creativity</span><strong>{{ score.creativity.toFixed(1) }}</strong></article>
         </section>
 
-
-
-
-
-        <!-- =================================
-
-             USER RATING
-
-        ================================== -->
-
-        <section class="your-rating-card">
-
-
-
+        <section class="your-rating-card" aria-labelledby="own-rating-heading">
           <div class="rating-heading">
-
             <div>
-
-              <p class="section-label">
-
-                HAVE YOUR SAY
-
-              </p>
-
-
-
-              <h2>
-
-                Your Rating
-
-              </h2>
-
+              <p class="section-label">HAVE YOUR SAY</p>
+              <h2 id="own-rating-heading">{{ existingRating ? 'Update Your Rating' : 'Your Rating' }}</h2>
             </div>
-
-
-
-            <span
-
-              v-if="isAuthenticated"
-
-              class="signed-in-badge"
-
-            >
-
-              Signed in
-
-            </span>
-
+            <span v-if="isAuthenticated" class="signed-in-badge">Signed in</span>
           </div>
-
-
-
-
-
-          <!-- ---------------------------------
-
-               DESIGN
-
-          ---------------------------------- -->
-
-          <div class="rating-row">
-
-
-
+          <p class="rating-description">Choose a score from 1 to 5 for each category. You can update your rating later.</p>
+          <div v-for="item in [
+            { id: 'design', label: 'Design', description: 'Appearance and overall design quality', value: designRating },
+            { id: 'applicability', label: 'Applicability', description: 'Suitability for Melbourne', value: applicabilityRating },
+            { id: 'creativity', label: 'Creativity', description: 'Originality of the proposal', value: creativityRating },
+          ]" :key="item.id" class="rating-row">
             <div>
-
-              <h3>
-
-                Design
-
-              </h3>
-
-
-
-              <p>
-
-                Consider the overall visual
-
-                design and quality of the concept.
-
-              </p>
-
+              <h3>{{ item.label }}</h3>
+              <p>{{ item.description }}</p>
             </div>
-
-
-
-            <div
-
-              class="interactive-stars"
-
-              role="radiogroup"
-
-              aria-label="Design rating"
-
-              @mouseleave="hoverDesign = 0"
-
-            >
-
+            <div class="interactive-stars" :aria-label="`${item.label} score`">
               <button
-
                 v-for="star in 5"
-
                 :key="star"
-
                 type="button"
-
                 class="star-button"
-
-                :class="{
-
-                  selected:
-
-                    star <=
-
-                    (
-
-                      hoverDesign ||
-
-                      designRating
-
-                    ),
-
-                }"
-
-                :aria-label="
-
-                  `Rate Design ${star} out of 5`
-
-                "
-
-                @mouseenter="
-
-                  hoverDesign = star
-
-                "
-
-                @focus="
-
-                  hoverDesign = star
-
-                "
-
-                @blur="
-
-                  hoverDesign = 0
-
-                "
-
-                @click="
-
-                  setDesignRating(star)
-
-                "
-
-              >
-
-                ★
-
-              </button>
-
+                :class="{ selected: star <= item.value }"
+                :aria-label="`${item.label}: ${star} out of 5`"
+                :aria-pressed="star === item.value"
+                @click="item.id === 'design' ? designRating = star : item.id === 'applicability' ? applicabilityRating = star : creativityRating = star"
+              >★</button>
             </div>
-
-
-
           </div>
-
-
-
-
-
-          <!-- ---------------------------------
-
-               APPLICABILITY
-
-          ---------------------------------- -->
-
-          <div class="rating-row">
-
-
-
-            <div>
-
-              <h3>
-
-                Applicability
-
-              </h3>
-
-
-
-              <p>
-
-                Consider how practical the
-
-                concept would be for Melbourne.
-
-              </p>
-
-            </div>
-
-
-
-            <div
-
-              class="interactive-stars"
-
-              role="radiogroup"
-
-              aria-label="Applicability rating"
-
-              @mouseleave="
-
-                hoverApplicability = 0
-
-              "
-
-            >
-
-              <button
-
-                v-for="star in 5"
-
-                :key="star"
-
-                type="button"
-
-                class="star-button"
-
-                :class="{
-
-                  selected:
-
-                    star <=
-
-                    (
-
-                      hoverApplicability ||
-
-                      applicabilityRating
-
-                    ),
-
-                }"
-
-                :aria-label="
-
-                  `Rate Applicability ${star} out of 5`
-
-                "
-
-                @mouseenter="
-
-                  hoverApplicability = star
-
-                "
-
-                @focus="
-
-                  hoverApplicability = star
-
-                "
-
-                @blur="
-
-                  hoverApplicability = 0
-
-                "
-
-                @click="
-
-                  setApplicabilityRating(star)
-
-                "
-
-              >
-
-                ★
-
-              </button>
-
-            </div>
-
-
-
-          </div>
-
-
-
-
-
-          <!-- ---------------------------------
-
-               CREATIVITY
-
-          ---------------------------------- -->
-
-          <div class="rating-row">
-
-
-
-            <div>
-
-              <h3>
-
-                Creativity
-
-              </h3>
-
-
-
-              <p>
-
-                Consider originality and the
-
-                creative approach to urban
-
-                greening.
-
-              </p>
-
-            </div>
-
-
-
-            <div
-
-              class="interactive-stars"
-
-              role="radiogroup"
-
-              aria-label="Creativity rating"
-
-              @mouseleave="
-
-                hoverCreativity = 0
-
-              "
-
-            >
-
-              <button
-
-                v-for="star in 5"
-
-                :key="star"
-
-                type="button"
-
-                class="star-button"
-
-                :class="{
-
-                  selected:
-
-                    star <=
-
-                    (
-
-                      hoverCreativity ||
-
-                      creativityRating
-
-                    ),
-
-                }"
-
-                :aria-label="
-
-                  `Rate Creativity ${star} out of 5`
-
-                "
-
-                @mouseenter="
-
-                  hoverCreativity = star
-
-                "
-
-                @focus="
-
-                  hoverCreativity = star
-
-                "
-
-                @blur="
-
-                  hoverCreativity = 0
-
-                "
-
-                @click="
-
-                  setCreativityRating(star)
-
-                "
-
-              >
-
-                ★
-
-              </button>
-
-            </div>
-
-
-
-          </div>
-
-
-
-
-
-          <!-- =================================
-
-               MESSAGES
-
-          ================================== -->
-
-          <div
-
-            v-if="errorMessage"
-
-            class="alert alert-danger mt-4"
-
-            role="alert"
-
-          >
-
-            {{ errorMessage }}
-
-          </div>
-
-
-
-
-
-          <div
-
-            v-if="successMessage"
-
-            class="alert alert-success mt-4"
-
-            role="status"
-
-          >
-
-            {{ successMessage }}
-
-          </div>
-
-
-
-
-
-          <!-- =================================
-
-               ACTIONS
-
-          ================================== -->
-
           <div class="rating-actions">
-
-
-
-            <div
-
-              v-if="!isAuthenticated"
-
-              class="login-message"
-
-            >
-
-              <p>
-
-                You can view the public rating
-
-                without an account. Sign in to
-
-                submit your own rating.
-
-              </p>
-
-
-
-              <button
-
-                type="button"
-
-                class="btn login-btn"
-
-                @click="goToLogin"
-
-              >
-
-                Sign In to Rate
-
-              </button>
-
-            </div>
-
-
-
-
-
-            <button
-
-              v-else
-
-              type="button"
-
-              class="btn submit-btn"
-
-              :disabled="!ratingComplete"
-
-              @click="submitRating"
-
-            >
-
-              Submit Rating
-
+            <button v-if="!isAuthenticated" type="button" class="btn login-btn" @click="goToLogin">Sign In to Rate</button>
+            <button v-else type="button" class="btn submit-btn" :disabled="!ratingComplete || saving || loading" @click="submitRating">
+              {{ saving ? 'Saving...' : existingRating ? 'Update Rating' : 'Submit Rating' }}
             </button>
-
-
-
           </div>
-
-
-
         </section>
-
-
-
-
-
-        <!-- =================================
-
-             NEXT DESIGN
-
-        ================================== -->
 
         <section class="next-design">
-
           <div>
-
-            <p class="section-label">
-
-              DESIGN CHALLENGE
-
-            </p>
-
-
-
-            <h2>
-
-              Explore the next finalist
-
-            </h2>
-
+            <p class="section-label">DESIGN CHALLENGE</p>
+            <h2>Explore another concept</h2>
           </div>
-
-
-
-          <button
-
-            type="button"
-
-            class="next-button"
-
-            aria-label="Next finalist design"
-
-          >
-
-            →
-
-          </button>
-
+          <button type="button" class="next-button" @click="selectDesign(index + 1)" :aria-label="`Next design after ${activeDesign.name}`">→</button>
         </section>
-
-
-
       </div>
-
     </main>
-
   </div>
-
 </template>
-
-
-
-
 
 <style scoped>
 
@@ -2870,5 +1650,29 @@ onMounted(() => {
 }
 
 
+
+
+/* Design browsing and illustrative photography */
+.design-content { max-width: 1100px; }
+.design-selector { display: flex; gap: 10px; margin-top: 32px; margin-bottom: 24px; flex-wrap: wrap; }
+.design-tab { border: 1px solid #79977b; background: white; color: #284e30; padding: 10px 15px; border-radius: 10px; font-weight: 600; }
+.design-tab.active, .design-tab:hover { background: #315c39; color: white; }
+.design-tab:focus-visible, .star-button:focus-visible, .next-button:focus-visible { outline: 3px solid #1b4f9c; outline-offset: 3px; }
+.design-summary { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, 1fr); background: white; border-radius: 18px; border: 1px solid #dfe8dc; overflow: hidden; margin-bottom: 24px; }
+.design-photo { min-height: 280px; background: #dcead7; }
+.design-photo img { display: block; width: 100%; height: 100%; min-height: 280px; object-fit: cover; }
+.design-details { padding: 28px; align-self: center; color: #37483b; }
+.design-details h2 { color: #203b29; font: bold 2rem Georgia, serif; }
+.design-category { color: #315c39; font-weight: 700; }
+.photo-note { color: #465549; font-size: .87rem; margin-top: 20px; }
+.challenge-header .intro, .rating-description, .rating-row p, .score-line span, .category-label, .login-message p { color: #37483b; }
+.eyebrow, .section-label { color: #315c39; }
+.next-design .section-label { color: #315c39; }
+.public-star { color: #68766a; }
+.star-button { color: #6d776e; }
+.star-button.selected { color: #966900; }
+.star-button:focus-visible { transform: scale(1.08); }
+.submit-btn:disabled { color: #384b3d; }
+@media (max-width: 767.98px) { .design-summary { grid-template-columns: 1fr; } .design-details { padding: 20px; } }
 
 </style>

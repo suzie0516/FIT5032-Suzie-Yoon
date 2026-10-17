@@ -14,11 +14,23 @@ import TablesDemoView from '../views/TablesDemoView.vue'
 import EmailView from '../views/EmailView.vue'
 
 import { authReady, isAuthenticated, isAdmin } from '../utils/auth'
+import AboutView from '../views/AboutView.vue'
+import ProgramsView from '../views/ProgramsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
 
   routes: [
+    {
+      path: '/about',
+      name: 'about',
+      component: AboutView,
+    },
+    {
+      path: '/programs',
+      name: 'programs',
+      component: ProgramsView,
+    },
     {
       path: '/',
       name: 'home',
