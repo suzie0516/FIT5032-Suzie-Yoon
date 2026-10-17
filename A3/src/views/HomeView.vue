@@ -1439,17 +1439,16 @@ section {
 }
 
 .section-label {
-
+  
   margin-bottom: 8px;
 
-  color: #56864b;
+  color: #254b35;
 
   font-size: 0.78rem;
 
   font-weight: 700;
 
   letter-spacing: 1.8px;
-
 }
 
 .hero-section {

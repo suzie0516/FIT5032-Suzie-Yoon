@@ -200,8 +200,9 @@ onMounted(loadRatings)
           </div>
           <div class="public-score">
             <div class="score-line"><strong>{{ score.overall.toFixed(1) }} / 5</strong></div>
-            <div class="public-stars" :aria-label="`Community average ${score.overall.toFixed(1)} out of 5`">
+            <div class="public-stars">
               <span v-for="star in 5" :key="star" class="public-star" :class="{ filled: score.overall >= star - 0.5 }" aria-hidden="true">★</span>
+              <span class="visually-hidden">Community average {{ score.overall.toFixed(1) }} out of 5</span>
             </div>
           </div>
         </section>
@@ -230,7 +231,7 @@ onMounted(loadRatings)
               <h3>{{ item.label }}</h3>
               <p>{{ item.description }}</p>
             </div>
-            <div class="interactive-stars" :aria-label="`${item.label} score`">
+            <div class="interactive-stars" role="group" :aria-label="`${item.label} score`">
               <button
                 v-for="star in 5"
                 :key="star"
@@ -1675,4 +1676,15 @@ onMounted(loadRatings)
 .submit-btn:disabled { color: #384b3d; }
 @media (max-width: 767.98px) { .design-summary { grid-template-columns: 1fr; } .design-details { padding: 20px; } }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 </style>
